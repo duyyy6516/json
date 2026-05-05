@@ -3,52 +3,44 @@ import pandas as pd
 import plotly.express as px
 import json
 
-st.set_page_config(page_title="JSON Analyzer", layout="wide")
+st.set_page_config(page_title="JSON Data Analyzer", layout="wide")
 
 def main():
-    st.title("📊 Phân tích File JSON")
+    st.title("📊 Phân tích dữ liệu JSON")
     
-    if 'df' not in st.session_state:
-        st.session_state.df = None
-
-    with st.sidebar:
-        uploaded_file = st.file_uploader("Tải file JSON", type=['json'])
-        if st.button("Reset / Xóa dữ liệu"):
-            st.session_state.df = None
-            st.rerun()
-
+    uploaded_file = st.file_uploader("Tải file JSON", type=['json'])
+    
     if uploaded_file is not None:
         try:
             data = json.load(uploaded_file)
             df = pd.json_normalize(data)
-            # Ép kiểu dữ liệu số tự động
+            
+            # --- KIỂM TRA DỮ LIỆU ---
+            st.write("### Tổng quan dữ liệu")
+            st.write(f"Số hàng: {df.shape[0]}, Số cột: {df.shape[1]}")
+            
+            # Tự động ép kiểu số (quan trọng)
             for col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='ignore')
-            st.session_state.df = df
-        except Exception:
-            pass
+            
+            # Hiển thị bảng dữ liệu (để bạn xem cột nào là số)
+            st.subheader("📋 Bảng dữ liệu thô")
+            st.dataframe(df)
 
-    if st.session_state.df is not None:
-        df = st.session_state.df
-        
-        # Vẽ biểu đồ tự động tất cả các cột số
-        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-        if numeric_cols:
-            st.subheader("📈 Biểu đồ dữ liệu")
-            fig = px.line(df, y=numeric_cols, title="Biểu đồ tất cả các chỉ số")
-            fig.update_traces(mode='lines+markers')
-            st.plotly_chart(fig, use_container_width=True)
+            # Vẽ biểu đồ nếu tìm thấy cột số
+            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+            if numeric_cols:
+                st.subheader("📈 Biểu đồ dữ liệu")
+                fig = px.line(df, y=numeric_cols)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("⚠️ Không tìm thấy cột nào có dạng số (Number) để vẽ biểu đồ.")
+                st.write("Kiểm tra lại xem các số trong file của bạn có bị để trong dấu ngoặc kép ' ' không?")
 
-        # Hiển thị bảng
-        st.subheader("📋 Dữ liệu thô")
-        st.data_editor(
-            df, 
-            use_container_width=True,
-            column_config={col: st.column_config.TextColumn(col, width="medium") for col in df.columns},
-            disabled=True
-        )
+        except Exception as e:
+            st.error(f"Lỗi khi xử lý file: {e}")
     else:
-        st.info("Hãy tải file JSON ở menu bên trái.")
+        st.info("Vui lòng tải file JSON lên.")
 
 if __name__ == "__main__":
     main()
