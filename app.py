@@ -3,48 +3,55 @@ import pandas as pd
 import plotly.express as px
 import json
 
-# 1. Cấu hình trang
 st.set_page_config(page_title="JSON Analyzer", layout="wide")
 
 def main():
-    st.title("📊 Phân tích dữ liệu JSON")
+    st.title("📊 Phân tích JSON Nâng cao")
     
-    uploaded_file = st.file_uploader("Tải file JSON", type=['json'])
-    
+    # 1. Sidebar tải file
+    with st.sidebar:
+        uploaded_file = st.file_uploader("Tải lên file JSON", type=['json'])
+        if st.button("Reset / Xóa dữ liệu"):
+            st.session_state.df = None
+            st.rerun()
+
+    # 2. Xử lý dữ liệu
     if uploaded_file is not None:
         try:
-            # Đọc dữ liệu
             data = json.load(uploaded_file)
             df = pd.json_normalize(data)
             
-            # XỬ LÝ SỐ AN TOÀN
-            # Dùng 'coerce' để biến các giá trị không phải số thành NaN
+            # Ép kiểu số an toàn
             for col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-            st.write(f"Số hàng: {df.shape[0]}, Số cột: {df.shape[1]}")
-            
-            # Bảng dữ liệu
-            st.subheader("📋 Bảng dữ liệu")
-            st.dataframe(df, use_container_width=True)
-
-            # Vẽ biểu đồ
-            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-            
-            if numeric_cols:
-                st.subheader("📈 Biểu đồ dữ liệu")
-                fig = px.line(df, y=numeric_cols)
-                fig.update_traces(mode='lines+markers')
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("⚠️ Không tìm thấy cột nào là số.")
-
+            st.session_state.df = df
         except Exception as e:
-            # Ghi log lỗi chi tiết để bạn dễ kiểm tra
-            st.error(f"Lỗi khi xử lý file: {str(e)}")
-            st.write("Vui lòng kiểm tra cấu trúc file JSON của bạn.")
+            st.error(f"Lỗi: {e}")
+
+    # 3. Giao diện chính
+    if 'df' in st.session_state and st.session_state.df is not None:
+        df = st.session_state.df
+        
+        st.subheader("🛠 Lựa chọn cột để vẽ")
+        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        
+        # Chọn nhiều cột
+        selected_keys = st.multiselect("Tích chọn các cột giá trị muốn vẽ:", numeric_cols)
+        
+        # --- VẼ BIỂU ĐỒ TỪNG KEY RIÊNG BIỆT ---
+        if selected_keys:
+            for key in selected_keys:
+                st.write(f"### Biểu đồ: {key}")
+                fig = px.line(df, y=key, title=f"Dữ liệu của {key}")
+                fig.update_traces(mode='lines+markers', line_color='#636EFA')
+                st.plotly_chart(fig, use_container_width=True)
+        
+        # 4. Bảng dữ liệu
+        st.subheader("📋 Bảng dữ liệu")
+        st.dataframe(df, use_container_width=True)
+    
     else:
-        st.info("Vui lòng tải file JSON lên.")
+        st.info("Hãy tải file JSON để bắt đầu.")
 
 if __name__ == "__main__":
     main()
