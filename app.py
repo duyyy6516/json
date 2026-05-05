@@ -17,34 +17,32 @@ def main():
             data = json.load(uploaded_file)
             df = pd.json_normalize(data)
             
-            # --- BƯỚC QUAN TRỌNG: ÉP KIỂU SỐ ---
-            # Chuyển tất cả các cột sang dạng số, nếu không phải số thì để lại là object
+            # XỬ LÝ SỐ AN TOÀN
+            # Dùng 'coerce' để biến các giá trị không phải số thành NaN
             for col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='ignore')
+                df[col] = pd.to_numeric(df[col], errors='coerce')
             
-            st.write("### Tổng quan dữ liệu")
             st.write(f"Số hàng: {df.shape[0]}, Số cột: {df.shape[1]}")
             
-            # Hiển thị bảng dữ liệu
+            # Bảng dữ liệu
             st.subheader("📋 Bảng dữ liệu")
             st.dataframe(df, use_container_width=True)
 
             # Vẽ biểu đồ
-            # Chỉ lấy các cột thực sự là số
-            numeric_df = df.select_dtypes(include=['number'])
+            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
             
-            if not numeric_df.empty:
+            if numeric_cols:
                 st.subheader("📈 Biểu đồ dữ liệu")
-                # Vẽ tất cả các cột số lên biểu đồ
-                fig = px.line(df, y=numeric_df.columns)
+                fig = px.line(df, y=numeric_cols)
                 fig.update_traces(mode='lines+markers')
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.warning("⚠️ Không tìm thấy cột nào là số (Number). Hãy kiểm tra lại file JSON của bạn.")
-                st.write("Dữ liệu hiện tại của bạn đang là dạng:", df.dtypes.to_dict())
+                st.warning("⚠️ Không tìm thấy cột nào là số.")
 
         except Exception as e:
-            st.error(f"Lỗi khi xử lý file: {e}")
+            # Ghi log lỗi chi tiết để bạn dễ kiểm tra
+            st.error(f"Lỗi khi xử lý file: {str(e)}")
+            st.write("Vui lòng kiểm tra cấu trúc file JSON của bạn.")
     else:
         st.info("Vui lòng tải file JSON lên.")
 
