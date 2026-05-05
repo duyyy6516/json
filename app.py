@@ -46,14 +46,23 @@ def main():
         if numeric_cols:
             val_col = st.selectbox("Chọn cột giá trị (số) để vẽ:", numeric_cols)
             
-            # Vẽ Plotly (x_col=None để mặc định lấy chỉ số hàng làm trục x)
+            # Vẽ Plotly
             fig = px.line(df, y=val_col, title=f"Biểu đồ giá trị: {val_col}")
             fig.update_traces(mode='lines+markers')
             st.plotly_chart(fig, use_container_width=True)
 
-        # Bảng dữ liệu
-        st.subheader("📋 Bảng dữ liệu đã làm phẳng")
-        st.dataframe(df, use_container_width=True)
+        # Bảng dữ liệu hiển thị đầy đủ
+        st.subheader("📋 Bảng dữ liệu (Click vào ô để xem nội dung đầy đủ)")
+        
+        # Dùng data_editor để xử lý hiển thị văn bản dài
+        st.data_editor(
+            df, 
+            use_container_width=True,
+            column_config={
+                col: st.column_config.TextColumn(col, width="medium") for col in df.columns
+            },
+            disabled=True # Chỉ hiển thị, không cho sửa
+        )
     
     else:
         st.info("Hãy tải file JSON ở sidebar để bắt đầu.")
