@@ -9,7 +9,7 @@ import plotly.express as px
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
 st.title("📊 Công cụ Phân tích Dữ liệu")
 
-# 1. Đồng nhất Key (Chuyển hết về chữ thường để tránh trùng lặp)
+# 1. Đồng nhất Key
 def normalize_keys(data):
     if isinstance(data, list):
         return [normalize_keys(item) for item in data]
@@ -17,7 +17,7 @@ def normalize_keys(data):
         return {str(k).strip().lower(): normalize_keys(v) for k, v in data.items()}
     return data
 
-# 2. Làm phẳng JSON (Xử lý các mảng dữ liệu lồng nhau)
+# 2. Làm phẳng JSON
 def flatten_json(y):
     out = {}
     def flatten(x, name=''):
@@ -46,7 +46,6 @@ if uploaded_file is not None:
         clean_json = normalize_keys(raw_data)
         df = pd.DataFrame([flatten_json(row) for row in clean_json])
         
-        # Dọn dẹp dữ liệu trống và cột trùng lặp
         df = df.dropna(axis=1, how='all').loc[:, ~df.columns.duplicated()]
         df = df.replace(r'^\s*$', np.nan, regex=True)
         display_df = df.fillna("")
@@ -59,7 +58,6 @@ if uploaded_file is not None:
         # --- THIẾT LẬP BIỂU ĐỒ ---
         st.subheader("⚙️ Thiết lập biểu đồ & Đối chiếu X-Y")
         
-        # Tự động tìm cột thời gian
         time_col = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
         start_d, end_d = None, None
         
@@ -81,7 +79,6 @@ if uploaded_file is not None:
             resample_dict = {"Nguyên bản": None, "Trung bình mỗi phút": "1min", "Trung bình mỗi 5 phút": "5min"}
 
         with col2:
-            # Loại bỏ các cột không phải là số/giá trị khỏi danh sách vẽ biểu đồ
             exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển']
             numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
             
@@ -92,7 +89,6 @@ if uploaded_file is not None:
             cols_ui = st.columns(4)
             selected_keys = [k for i, k in enumerate(numeric_options) if cols_ui[i % 4].checkbox(k.upper(), key=f"c_{k}")]
             
-            # Cấu hình khóa trục
             lock_zoom = st.checkbox("🔒 Khóa trượt (Chỉ cho phép Zoom)", value=True)
 
         # --- XỬ LÝ VÀ VẼ BIỂU ĐỒ ---
@@ -115,11 +111,48 @@ if uploaded_file is not None:
                         group_val = str(row[group_col]) if group_col != "Không phân nhóm" else "Tất cả"
                         
                         if val and val.lower() != 'nan':
-                            # Tìm kiếm mẫu định dạng đặc biệt kiểu: 20-06-26/2.53
                             matches = re.findall(r'(\d{2}-\d{2}-\d{2})/([-+]?\d*\.?\d+)', val)
                             if matches:
                                 for t_str, v_str in matches:
                                     try:
                                         full_t_str = f"{main_time.strftime('%Y-%m-%d')} {t_str.replace('-', ':')}"
                                         all_points.append({'TG': pd.to_datetime(full_t_str), 'Giá trị': float(v_str), 'Nhóm': group_val})
-                                    except:
+                                    except Exception:
+                                        pass
+                            else:
+                                num_match = re.search(r'[-+]?\d*\.?\d+', val)
+                                if num_match:
+                                    all_points.append({'TG': main_time, 'Giá trị': float(num_match.group()), 'Nhóm': group_val})
+
+                    if all_points:
+                        chart_df = pd.DataFrame(all_points)
+                        rule = resample_dict[resample_choice]
+                        
+                        if rule:
+                            plot_data = chart_df.set_index('TG').groupby('Nhóm').resample(rule)['Giá trị'].mean().dropna().reset_index()
+                        else:
+                            plot_data = chart_df.groupby(['TG', 'Nhóm'])['Giá trị'].mean().reset_index()
+
+                        if not plot_data.empty:
+                            plot_data = plot_data.sort_values(by='TG')
+                            st.write(f"### Biểu đồ: {col.upper()}")
+                            
+                            fig = px.line(plot_data, x='TG', y='Giá trị', color='Nhóm', markers=True)
+                            
+                            fig.update_layout(
+                                xaxis_title="Thời gian (TG)",
+                                yaxis_title=f"Giá trị ({col.upper()})",
+                                xaxis=dict(fixedrange=False),
+                                yaxis=dict(fixedrange=False),
+                                dragmode='zoom' if lock_zoom else 'pan',
+                                hovermode="x unified",
+                                legend_title_text="Phân nhóm" if group_col != "Không phân nhóm" else None,
+                                uirevision='constant'
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            with st.expander(f"Xem bảng đối chiếu giá trị cho {col.upper()}"):
+                                st.dataframe(plot_data, use_container_width=True)
+                    st.write("---")
+    except Exception as e:
+        st.error(f"Lỗi hệ thống: {e}")
