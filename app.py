@@ -32,16 +32,6 @@ def flatten_json(y):
     flatten(y)
     return out
 
-# --- CSS ĐỂ THÊM THANH TRƯỢT NGANG ---
-st.markdown("""
-    <style>
-    .scroll-container {
-        overflow-x: auto;
-        white-space: nowrap;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 # --- XỬ LÝ FILE UPLOAD ---
 uploaded_file = st.file_uploader("Tải lên file JSON", type=['json'])
 
@@ -130,27 +120,24 @@ if uploaded_file is not None:
                             plot_data = plot_data.sort_values(by='TG')
                             st.write(f"### Biểu đồ: {col.upper()}")
                             
-                            # TÍNH TOÁN CHIỀU RỘNG DỰA TRÊN SỐ LƯỢNG ĐIỂM
-                            num_points = len(plot_data)
-                            dynamic_width = max(1000, num_points * 10) # Mỗi điểm 10px, tối thiểu 1000px
-                            
                             fig = px.line(plot_data, x='TG', y='Giá trị', color='Nhóm', markers=True)
                             fig.update_layout(
-                                width=dynamic_width, # Ép chiều rộng biểu đồ
                                 xaxis_title="Thời gian (TG)",
                                 yaxis_title=f"Giá trị ({col.upper()})",
-                                xaxis=dict(fixedrange=False),
+                                xaxis=dict(
+                                    fixedrange=False,
+                                    rangeslider=dict(visible=True), # Thanh trượt thời gian tích hợp
+                                    type="date"
+                                ),
                                 yaxis=dict(fixedrange=False),
                                 dragmode='zoom' if lock_zoom else 'pan',
                                 hovermode="x unified",
                                 legend_title_text="Phân nhóm" if group_col != "Không phân nhóm" else None,
-                                uirevision='constant'
+                                uirevision='constant',
+                                margin=dict(b=40)
                             )
                             
-                            # HIỂN THỊ TRONG DIV CÓ THANH TRƯỢT
-                            st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
-                            st.plotly_chart(fig, use_container_width=False, config={'scrollZoom': True})
-                            st.markdown('</div>', unsafe_allow_html=True)
+                            st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                             
                             with st.expander(f"Xem bảng đối chiếu giá trị cho {col.upper()}"):
                                 st.dataframe(plot_data, use_container_width=True)
