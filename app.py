@@ -3,12 +3,11 @@ import pandas as pd
 import numpy as np
 import json
 import re
-import plotly.express as px # Thư viện vẽ biểu đồ chuyên nghiệp
+import plotly.express as px
 
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
-st.title("📊 Công cụ Phân tích Dữ liệu Hệ thống (X-Y Axis)")
+st.title("📊 Công cụ Phân tích Dữ liệu Hệ thống (Có Hàng Rào Trục)")
 
-# 1. Đồng nhất Key
 def normalize_keys(data):
     if isinstance(data, list):
         return [normalize_keys(item) for item in data]
@@ -16,7 +15,6 @@ def normalize_keys(data):
         return {str(k).strip().lower(): normalize_keys(v) for k, v in data.items()}
     return data
 
-# 2. Làm phẳng JSON
 def flatten_json(y):
     out = {}
     def flatten(x, name=''):
@@ -50,7 +48,7 @@ if uploaded_file is not None:
         
         st.divider()
 
-        st.subheader("⚙️ Thiết lập biểu đồ & Đối chiếu X-Y")
+        st.subheader("⚙️ Thiết lập biểu đồ")
         
         time_col = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
         start_d, end_d = None, None
@@ -78,8 +76,6 @@ if uploaded_file is not None:
             st.write("Chọn chỉ số vẽ biểu đồ:")
             cols_ui = st.columns(4)
             selected_keys = [k for i, k in enumerate(numeric_options) if cols_ui[i % 4].checkbox(k.upper(), key=f"c_{k}")]
-            
-            lock_axis = st.checkbox("🔒 Khóa cứng trục biểu đồ (Không cho kéo trượt)", value=True)
 
         if st.button("🚀 TẠO BIỂU ĐỒ & BẢNG ĐỐI CHIẾU", type="primary"):
             if not selected_keys:
@@ -112,7 +108,6 @@ if uploaded_file is not None:
 
                     if all_points:
                         chart_df = pd.DataFrame(all_points)
-                        # Gom nhóm và sắp xếp theo TG
                         final_series = chart_df.groupby('TG')['Giá trị'].mean().sort_index()
                         
                         rule = resample_dict[resample_choice]
@@ -125,21 +120,31 @@ if uploaded_file is not None:
 
                             st.write(f"### Biểu đồ: {col.upper()}")
                             
-                            # Vẽ bằng Plotly
+                            # TÍNH TOÁN "HÀNG RÀO" CHO TRỤC X
+                            min_time = plot_data['TG'].min()
+                            max_time = plot_data['TG'].max()
+                            
+                            # Thêm 1 tí xíu đệm (buffer) 5 phút ở hai đầu để điểm đầu/cuối không bị dính sát mép màn hình
+                            time_buffer = pd.Timedelta(minutes=5)
+
                             fig = px.line(plot_data, x='TG', y='Giá trị', markers=True)
                             
-                            # Định dạng trục và Tooltip
                             fig.update_traces(hovertemplate="<b>TG:</b> %{x|%Y-%m-%d %H:%M:%S}<br><b>Giá trị:</b> %{y}<extra></extra>")
+                            
                             fig.update_layout(
-                                xaxis_title="Thời gian (TG)",
+                                xaxis_title="Thời gian",
                                 yaxis_title=f"Giá trị ({col.upper()})",
-                                xaxis=dict(fixedrange=lock_axis), # Khóa trục X
-                                yaxis=dict(fixedrange=lock_axis), # Khóa trục Y
+                                xaxis=dict(
+                                    bounds=[min_time - time_buffer, max_time + time_buffer] # <-- CHÍNH LÀ NÓ! Dựng tường không cho kéo ra ngoài vùng dữ liệu
+                                ),
+                                yaxis=dict(
+                                    # Trục Y cũng tự động scale theo, không khóa cứng
+                                    autorange=True
+                                ),
                                 hovermode="x unified"
                             )
                             st.plotly_chart(fig, use_container_width=True)
                             
-                            # Bảng đối chiếu ngay dưới biểu đồ
                             with st.expander(f"Xem bảng đối chiếu giá trị cho {col.upper()}"):
                                 st.dataframe(plot_data, use_container_width=True)
                     st.write("---")
