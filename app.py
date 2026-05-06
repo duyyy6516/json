@@ -156,4 +156,4 @@ if uploaded_file is not None:
                                 st.dataframe(plot_data, use_container_width=True)
                     st.write("---")
     except Exception as e:
-        st.error(f"Lỗi hệ thống: {e}") kiểu nó không phải ko cho truột mà chỉ có 2 thanh cuôn lên xuống hoặc cuộn ngang trái phải
+        st.error(f"Lỗi hệ thống: {e}") 
