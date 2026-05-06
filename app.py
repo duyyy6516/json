@@ -7,7 +7,7 @@ import plotly.express as px
 
 # Cấu hình trang
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
-st.title("📊 Công cụ Phân tích Dữ liệu ")
+st.title("📊 Công cụ Phân tích Dữ liệu Chuyên sâu")
 
 # --- 1. TỐI ƯU HÓA HIỆU NĂNG VỚI CACHE ---
 @st.cache_data
@@ -70,7 +70,7 @@ if uploaded_file is not None:
         # TAB 2: VẼ BIỂU ĐỒ ĐƠN LẺ
         # -------------------------------------------------------------
         with tab2:
-            st.subheader("⚙️ Vẽ  biểu đồ đơn lẻ")
+            st.subheader("⚙️ Thiết lập biểu đồ đơn lẻ")
             
             time_col = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
             start_d, end_d = None, None
@@ -136,6 +136,13 @@ if uploaded_file is not None:
                             chart_df = pd.DataFrame(all_points)
                             rule = resample_dict[resample_choice]
                             
+                            # --- TÍNH NĂNG: TỰ ĐỘNG ÉP LÀM MƯỢT NẾU > 7 NGÀY ---
+                            if start_d and end_d:
+                                delta_days = (end_d - start_d).days
+                                if delta_days > 7 and not rule:
+                                    st.warning(f"⚠️ Khoảng thời gian chọn quá dài ({delta_days} ngày). Hệ thống tự động chuyển '{col.upper()}' sang 'Trung bình mỗi 5 phút' để tránh treo trình duyệt.")
+                                    rule = "5min"
+
                             if rule:
                                 plot_data = chart_df.set_index('TG').resample(rule)['Giá trị'].mean().dropna().reset_index()
                             else:
@@ -158,6 +165,10 @@ if uploaded_file is not None:
                                     xaxis=dict(rangeslider=dict(visible=False), type="date")
                                 )
                                 
+                                # --- TÍNH NĂNG: ĐƯỜNG GIÓNG (SPIKELINES) ---
+                                fig.update_xaxes(showspikes=True, spikecolor="gray", spikesnap="cursor", spikemode="across")
+                                fig.update_yaxes(showspikes=True, spikecolor="gray", spikemode="across")
+                                
                                 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                                 
                                 with st.expander(f"Xem chi tiết {num_points} điểm dữ liệu cho {col.upper()}"):
@@ -168,7 +179,7 @@ if uploaded_file is not None:
         # TAB 3: VẼ BIỂU ĐỒ LỒNG NHAU (SO SÁNH MULTI-LINE)
         # -------------------------------------------------------------
         with tab3:
-            st.subheader("⚙️ Vẽ biểu đồ đối chiếu lồng nhau (Giá trị thực tế)")
+            st.subheader("⚙️ Thiết lập biểu đồ đối chiếu lồng nhau (Giá trị thực tế)")
             st.info("Chức năng này so sánh các thông số dựa trên giá trị thực của chúng.")
 
             time_col_multi = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
@@ -236,6 +247,13 @@ if uploaded_file is not None:
                         multi_chart_df = pd.DataFrame(all_multi_points)
                         rule_multi = r_dict_multi[res_choice_multi]
                         
+                        # --- TÍNH NĂNG: TỰ ĐỘNG ÉP LÀM MƯỢT NẾU > 7 NGÀY ---
+                        if start_d_m and end_d_m:
+                            delta_days_m = (end_d_m - start_d_m).days
+                            if delta_days_m > 7 and not rule_multi:
+                                st.warning(f"⚠️ Khoảng thời gian so sánh quá dài ({delta_days_m} ngày). Hệ thống tự động chuyển sang 'Trung bình mỗi 5 phút' để biểu đồ hoạt động mượt mà.")
+                                rule_multi = "5min"
+
                         if rule_multi:
                             plot_data_multi = multi_chart_df.set_index('TG').groupby('Loại chỉ số')['Giá trị'].resample(rule_multi).mean().dropna().reset_index()
                         else:
@@ -266,6 +284,10 @@ if uploaded_file is not None:
                                 dragmode='pan',
                                 xaxis=dict(rangeslider=dict(visible=False), type="date")
                             )
+                            
+                            # --- TÍNH NĂNG: ĐƯỜNG GIÓNG (SPIKELINES) ---
+                            fig_multi.update_xaxes(showspikes=True, spikecolor="gray", spikesnap="cursor", spikemode="across")
+                            fig_multi.update_yaxes(showspikes=True, spikecolor="gray", spikemode="across")
                             
                             st.plotly_chart(fig_multi, use_container_width=True, config={'scrollZoom': True})
 
