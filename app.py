@@ -7,7 +7,7 @@ import plotly.express as px
 
 # Cấu hình trang
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
-st.title("📊 Công cụ Phân tích Dữ liệu Chuyên sâu")
+st.title("📊 Công cụ Phân tích ")
 
 # 1. Đồng nhất Key
 def normalize_keys(data):
@@ -50,13 +50,13 @@ if uploaded_file is not None:
         df = df.replace(r'^\s*$', np.nan, regex=True)
         display_df = df.fillna("")
 
-        st.subheader(f"📋 Bảng dữ liệu gốc ({len(df)} bản ghi)")
+        st.subheader(f"📋 Bảng dữ liệu  ({len(df)} bản ghi)")
         st.data_editor(display_df, use_container_width=True)
         
         st.divider()
 
         # --- THIẾT LẬP BIỂU ĐỒ ---
-        st.subheader("⚙️ Thiết lập biểu đồ & Đối chiếu X-Y")
+        st.subheader("⚙️ vẽ biểu đồ ")
         
         time_col = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
         start_d, end_d = None, None
@@ -87,7 +87,7 @@ if uploaded_file is not None:
             selected_keys = [k for i, k in enumerate(numeric_options) if cols_ui[i % 4].checkbox(k.upper(), key=f"c_{k}")]
 
         # --- XỬ LÝ VÀ VẼ BIỂU ĐỒ ---
-        if st.button("🚀 TẠO BIỂU ĐỒ & BẢNG ĐỐI CHIẾU", type="primary"):
+        if st.button("🚀 TẠO BIỂU ĐỒ", type="primary"):
             if not selected_keys:
                 st.warning("Hãy chọn ít nhất 1 chỉ số!")
             else:
