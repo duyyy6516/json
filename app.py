@@ -6,7 +6,7 @@ import re
 import plotly.express as px
 
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
-st.title("📊 Công cụ Phân tích Dữ liệu Hệ thống (Có Hàng Rào Trục)")
+st.title("📊 Công cụ Phân tích Dữ liệu Hệ thống (X-Y Axis)")
 
 def normalize_keys(data):
     if isinstance(data, list):
@@ -124,7 +124,7 @@ if uploaded_file is not None:
                             min_time = plot_data['TG'].min()
                             max_time = plot_data['TG'].max()
                             
-                            # Thêm 1 tí xíu đệm (buffer) 5 phút ở hai đầu để điểm đầu/cuối không bị dính sát mép màn hình
+                            # Thêm 1 tí xíu đệm (buffer) 5 phút ở hai đầu
                             time_buffer = pd.Timedelta(minutes=5)
 
                             fig = px.line(plot_data, x='TG', y='Giá trị', markers=True)
@@ -132,13 +132,14 @@ if uploaded_file is not None:
                             fig.update_traces(hovertemplate="<b>TG:</b> %{x|%Y-%m-%d %H:%M:%S}<br><b>Giá trị:</b> %{y}<extra></extra>")
                             
                             fig.update_layout(
-                                xaxis_title="Thời gian",
+                                xaxis_title="Thời gian (TG)",
                                 yaxis_title=f"Giá trị ({col.upper()})",
                                 xaxis=dict(
-                                    bounds=[min_time - time_buffer, max_time + time_buffer] # <-- CHÍNH LÀ NÓ! Dựng tường không cho kéo ra ngoài vùng dữ liệu
+                                    # ĐÂY LÀ TỪ KHÓA CHUẨN XÁC ĐỂ KHÓA GIỚI HẠN KÉO TRƯỢT CỦA PLOTLY
+                                    minallowed=min_time - time_buffer,
+                                    maxallowed=max_time + time_buffer
                                 ),
                                 yaxis=dict(
-                                    # Trục Y cũng tự động scale theo, không khóa cứng
                                     autorange=True
                                 ),
                                 hovermode="x unified"
