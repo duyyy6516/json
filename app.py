@@ -86,8 +86,7 @@ if uploaded_file is not None:
             cols_ui = st.columns(4)
             selected_keys = [k for i, k in enumerate(numeric_options) if cols_ui[i % 4].checkbox(k.upper(), key=f"c_{k}")]
             
-            # Cấu hình khóa trục
-            lock_zoom = st.checkbox("🔒 Khóa trượt (Chỉ cho phép Zoom)", value=True)
+            lock_zoom = st.checkbox("🔒 Khóa trượt (Chỉ cho phép Zoom bằng chuột/khung)", value=True)
 
         # --- XỬ LÝ VÀ VẼ BIỂU ĐỒ ---
         if st.button("🚀 TẠO BIỂU ĐỒ & BẢNG ĐỐI CHIẾU", type="primary"):
@@ -136,20 +135,21 @@ if uploaded_file is not None:
                             
                             fig = px.line(plot_data, x='TG', y='Giá trị', color='Nhóm', markers=True)
                             
-                            # CẤU HÌNH ZOOM & PAN
                             fig.update_layout(
                                 xaxis_title="Thời gian (TG)",
                                 yaxis_title=f"Giá trị ({col.upper()})",
-                                # Cho phép Zoom (fixedrange=False)
                                 xaxis=dict(fixedrange=False),
                                 yaxis=dict(fixedrange=False),
-                                # Nếu lock_zoom được chọn, ta ép kiểu drag thành zoom, không cho pan
                                 dragmode='zoom' if lock_zoom else 'pan',
                                 hovermode="x unified",
                                 legend_title_text="Phân nhóm" if group_col != "Không phân nhóm" else None,
-                                uirevision='constant' # Giữ trạng thái zoom khi tương tác
+                                uirevision='constant'
                             )
-                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # CẤU HÌNH CHO PHÉP ZOOM BẰNG CON LĂN CHUỘT
+                            chart_config = {'scrollZoom': True}
+                            
+                            st.plotly_chart(fig, use_container_width=True, config=chart_config)
                             
                             with st.expander(f"Xem bảng đối chiếu giá trị cho {col.upper()}"):
                                 st.dataframe(plot_data, use_container_width=True)
