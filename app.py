@@ -7,7 +7,7 @@ import plotly.express as px
 
 # Cấu hình trang
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
-st.title("📊 Công cụ Phân tích Dữ liệu")
+st.title("📊 Công cụ Phân tích Dữ liệu Chuyên sâu")
 
 # 1. Đồng nhất Key
 def normalize_keys(data):
@@ -133,16 +133,29 @@ if uploaded_file is not None:
                             
                             fig = px.line(plot_data, x='TG', y='Giá trị', markers=True)
                             
+                            # CẤU HÌNH ZOOM VÀ TƯƠNG TÁC
                             fig.update_layout(
                                 xaxis_title="Thời gian (TG)",
                                 yaxis_title=f"Giá trị ({col.upper()})",
-                                xaxis=dict(fixedrange=False),
-                                yaxis=dict(fixedrange=False),
-                                dragmode='zoom', # Mặc định luôn là Zoom
                                 hovermode="x unified",
-                                uirevision='constant'
+                                uirevision='constant', # Giữ trạng thái khi lọc
+                                dragmode='pan',        # Chế độ kéo thả mặc định
+                                xaxis=dict(
+                                    rangeslider=dict(visible=True), # Thanh trượt thời gian
+                                    type="date"
+                                )
                             )
-                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Hiển thị biểu đồ với cấu hình zoom chuột
+                            st.plotly_chart(
+                                fig, 
+                                use_container_width=True, 
+                                config={
+                                    'scrollZoom': True,        # BẬT ZOOM BẰNG CON LĂN
+                                    'displayModeBar': True,
+                                    'modeBarButtonsToAdd': ['drawline', 'eraseshape']
+                                }
+                            )
                             
                             with st.expander(f"Xem bảng đối chiếu giá trị cho {col.upper()}"):
                                 st.dataframe(plot_data, use_container_width=True)
