@@ -239,8 +239,9 @@ if uploaded_file is not None:
                             yaxis_label = "Giá trị đo (Thực tế)"
                             
                             if normalize_scale:
+                                # GIẢI QUYẾT LỖI Ở ĐÂY: Thêm (x * 0 + 50) để xử lý đường nằm ngang
                                 plot_data_multi['Giá trị hiển thị'] = plot_data_multi.groupby('Loại chỉ số')['Giá trị'].transform(
-                                    lambda x: (x - x.min()) / (x.max() - x.min()) * 100 if x.max() != x.min() else 50
+                                    lambda x: (x - x.min()) / (x.max() - x.min()) * 100 if x.max() != x.min() else (x * 0 + 50)
                                 )
                                 y_target = 'Giá trị hiển thị'
                                 yaxis_label = "Mức độ biến thiên (%)"
