@@ -133,25 +133,24 @@ if uploaded_file is not None:
                             
                             fig = px.line(plot_data, x='TG', y='Giá trị', markers=True)
                             
-                            # CẤU HÌNH ZOOM VÀ TƯƠNG TÁC
+                            # CẤU HÌNH GIAO DIỆN SẠCH (ẨN RANGESLIDER)
                             fig.update_layout(
                                 xaxis_title="Thời gian (TG)",
                                 yaxis_title=f"Giá trị ({col.upper()})",
                                 hovermode="x unified",
-                                uirevision='constant', # Giữ trạng thái khi lọc
-                                dragmode='pan',        # Chế độ kéo thả mặc định
+                                uirevision='constant', 
+                                dragmode='pan',        
                                 xaxis=dict(
-                                    rangeslider=dict(visible=True), # Thanh trượt thời gian
+                                    rangeslider=dict(visible=False), # Ẩn thanh trượt để giao diện gọn đẹp
                                     type="date"
                                 )
                             )
                             
-                            # Hiển thị biểu đồ với cấu hình zoom chuột
                             st.plotly_chart(
                                 fig, 
                                 use_container_width=True, 
                                 config={
-                                    'scrollZoom': True,        # BẬT ZOOM BẰNG CON LĂN
+                                    'scrollZoom': True,        # Zoom mượt bằng con lăn chuột
                                     'displayModeBar': True,
                                     'modeBarButtonsToAdd': ['drawline', 'eraseshape']
                                 }
