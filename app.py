@@ -7,7 +7,7 @@ import plotly.express as px
 
 # Cấu hình trang
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
-st.title("📊 Công cụ Phân tích Dữ liệu Chuyên sâu")
+st.title("📊 Công cụ Phân tích Dữ liệu ")
 
 # --- 1. TỐI ƯU HÓA HIỆU NĂNG VỚI CACHE ---
 @st.cache_data
@@ -70,7 +70,7 @@ if uploaded_file is not None:
         # TAB 2: VẼ BIỂU ĐỒ ĐƠN LẺ
         # -------------------------------------------------------------
         with tab2:
-            st.subheader("⚙️ Thiết lập biểu đồ đơn lẻ")
+            st.subheader("⚙️ Vẽ  biểu đồ đơn lẻ")
             
             time_col = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
             start_d, end_d = None, None
@@ -168,7 +168,7 @@ if uploaded_file is not None:
         # TAB 3: VẼ BIỂU ĐỒ LỒNG NHAU (SO SÁNH MULTI-LINE)
         # -------------------------------------------------------------
         with tab3:
-            st.subheader("⚙️ Thiết lập biểu đồ đối chiếu lồng nhau (Giá trị thực tế)")
+            st.subheader("⚙️ Vẽ biểu đồ đối chiếu lồng nhau (Giá trị thực tế)")
             st.info("Chức năng này so sánh các thông số dựa trên giá trị thực của chúng.")
 
             time_col_multi = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
