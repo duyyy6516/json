@@ -168,8 +168,8 @@ if uploaded_file is not None:
         # TAB 3: VẼ BIỂU ĐỒ LỒNG NHAU (SO SÁNH MULTI-LINE)
         # -------------------------------------------------------------
         with tab3:
-            st.subheader("⚙️ Thiết lập biểu đồ đối chiếu lồng nhau")
-            st.info("Chức năng này gộp các chỉ số bạn tích chọn vào cùng một biểu đồ để so sánh sự tương quan theo thời gian.")
+            st.subheader("⚙️ Thiết lập biểu đồ đối chiếu lồng nhau (Giá trị thực tế)")
+            st.info("Chức năng này so sánh các thông số dựa trên giá trị thực của chúng.")
 
             time_col_multi = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
             exclude_m = [time_col_multi, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển']
@@ -178,12 +178,12 @@ if uploaded_file is not None:
             col1_m, col2_m = st.columns([1, 2])
             
             with col1_m:
-                st.write("🎯 **1. Chọn các chỉ số (tích vào ô vuông):**")
+                st.write("🎯 **1. Chọn các chỉ số:**")
                 check_multi_ui = st.columns(3)
                 selected_comparison_keys = [k for i, k in enumerate(numeric_opts_multi) if check_multi_ui[i % 3].checkbox(k.upper(), key=f"c_multi_{k}")]
 
             with col2_m:
-                st.write("✨ **2. Tùy chỉnh biểu đồ:**")
+                st.write("✨ **2. Tùy chỉnh:**")
                 start_d_m, end_d_m = None, None
                 if time_col_multi:
                     t_dates_m = pd.to_datetime(df[time_col_multi].astype(str).str.replace('-', ':').str.replace(':', '-', 2), errors='coerce')
@@ -195,16 +195,14 @@ if uploaded_file is not None:
 
                 res_choice_multi = st.selectbox(
                     "Làm mượt dữ liệu:", 
-                    ["Nguyên bản (Khuyên dùng cho chi tiết)", "Trung bình mỗi phút", "Trung bình mỗi 5 phút"], 
+                    ["Nguyên bản", "Trung bình mỗi phút", "Trung bình mỗi 5 phút"], 
                     key="res_multi"
                 )
-                r_dict_multi = {"Nguyên bản (Khuyên dùng cho chi tiết)": None, "Trung bình mỗi phút": "1min", "Trung bình mỗi 5 phút": "5min"}
-                
-                normalize_scale = st.checkbox("⚖️ Tự động cân bằng tỷ lệ (Đưa về thang 0-100%) để chống đè đường vẽ", value=True)
+                r_dict_multi = {"Nguyên bản": None, "Trung bình mỗi phút": "1min", "Trung bình mỗi 5 phút": "5min"}
 
             if st.button("🚀 TẠO BIỂU ĐỒ ĐỐI CHIẾU", type="primary", key="btn_multi"):
                 if len(selected_comparison_keys) < 2:
-                    st.warning("Hãy tích chọn ít nhất 2 chỉ số để lồng vào nhau!")
+                    st.warning("Hãy chọn ít nhất 2 chỉ số!")
                 else:
                     all_multi_points = []
                     working_df_multi = df.copy()
@@ -245,18 +243,8 @@ if uploaded_file is not None:
 
                         if not plot_data_multi.empty:
                             plot_data_multi = plot_data_multi.sort_values(by='TG')
-                            yaxis_label = "Giá trị đo (Thực tế)"
                             
-                            if normalize_scale:
-                                plot_data_multi['Giá trị hiển thị'] = plot_data_multi.groupby('Loại chỉ số')['Giá trị'].transform(
-                                    lambda x: (x - x.min()) / (x.max() - x.min()) * 100 if x.max() != x.min() else (x * 0 + 50)
-                                )
-                                y_target = 'Giá trị hiển thị'
-                                yaxis_label = "Mức độ biến thiên (%)"
-                            else:
-                                y_target = 'Giá trị'
-
-                            st.write(f"### Biểu đồ so sánh đối chiếu")
+                            st.write(f"### Biểu đồ đối chiếu giá trị thực")
                             
                             num_multi_points = len(plot_data_multi)
                             use_webgl_multi = 'webgl' if num_multi_points > 2000 else 'svg'
@@ -265,21 +253,15 @@ if uploaded_file is not None:
                             fig_multi = px.line(
                                 plot_data_multi, 
                                 x='TG', 
-                                y=y_target, 
+                                y='Giá trị', 
                                 color='Loại chỉ số', 
                                 markers=show_markers_multi,
-                                custom_data=['Giá trị'],
                                 render_mode=use_webgl_multi
                             )
                             
-                            if normalize_scale:
-                                fig_multi.update_traces(hovertemplate="<b>Thời gian:</b> %{x}<br><b>Giá trị gốc:</b> %{customdata[0]:.2f}<br><b>Biến thiên:</b> %{y:.1f}%")
-                            else:
-                                fig_multi.update_traces(hovertemplate="<b>Thời gian:</b> %{x}<br><b>Giá trị:</b> %{y:.2f}")
-                                
                             fig_multi.update_layout(
                                 xaxis_title="Thời gian (TG)", 
-                                yaxis_title=yaxis_label,
+                                yaxis_title="Giá trị (Đơn vị đo thực tế)",
                                 hovermode="x unified", 
                                 dragmode='pan',
                                 xaxis=dict(rangeslider=dict(visible=False), type="date")
@@ -287,12 +269,12 @@ if uploaded_file is not None:
                             
                             st.plotly_chart(fig_multi, use_container_width=True, config={'scrollZoom': True})
 
-                            with st.expander(f"Xem bảng dữ liệu so sánh ({num_multi_points} điểm)"):
+                            with st.expander(f"Xem bảng dữ liệu ({num_multi_points} điểm)"):
                                 st.dataframe(plot_data_multi, use_container_width=True)
                         else:
-                            st.error("Dữ liệu sau khi xử lý bị rỗng.")
+                            st.error("Không có dữ liệu hiển thị.")
                     else:
-                        st.warning("Không tìm thấy dữ liệu số hợp lệ trong thời gian đã chọn cho các chỉ số này.")
+                        st.warning("Không tìm thấy dữ liệu hợp lệ.")
 
     except Exception as e:
-        st.error(f"Lỗi hệ thống: {e}")
+        st.error(f"Lỗi: {e}")
