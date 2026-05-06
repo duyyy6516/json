@@ -89,7 +89,7 @@ if uploaded_file is not None:
             cols_ui = st.columns(4)
             selected_keys = [k for i, k in enumerate(numeric_options) if cols_ui[i % 4].checkbox(k.upper(), key=f"c_{k}")]
             
-            lock_axis = st.checkbox("🔒 Khóa cứng trục biểu đồ (Không cho kéo trượt)", value=True)
+            lock_axis = st.checkbox("🔒 Khóa cứng trục biểu đồ (Không cho kéo trượt)", value=False) # Bỏ mặc định khóa trục
 
         # --- XỬ LÝ VÀ VẼ BIỂU ĐỒ ---
         if st.button("🚀 TẠO BIỂU ĐỒ & BẢNG ĐỐI CHIẾU", type="primary"):
@@ -147,12 +147,15 @@ if uploaded_file is not None:
                             # Vẽ biểu đồ Plotly với color='Nhóm'
                             fig = px.line(plot_data, x='TG', y='Giá trị', color='Nhóm', markers=True)
                             
-                            # Định dạng giao diện Plotly
+                            # Định dạng giao diện Plotly - Thêm Range Slider và bỏ khóa trục
                             fig.update_traces(hovertemplate="<b>TG:</b> %{x|%Y-%m-%d %H:%M:%S}<br><b>Giá trị:</b> %{y}<extra></extra>")
                             fig.update_layout(
                                 xaxis_title="Thời gian (TG)",
                                 yaxis_title=f"Giá trị ({col.upper()})",
-                                xaxis=dict(fixedrange=lock_axis),
+                                xaxis=dict(
+                                    rangeslider=dict(visible=True), # Thêm Range Slider
+                                    type="date"
+                                ),
                                 yaxis=dict(fixedrange=lock_axis),
                                 hovermode="x unified",
                                 legend_title_text="Phân nhóm" if group_col != "Không phân nhóm" else None
