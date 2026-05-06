@@ -85,8 +85,6 @@ if uploaded_file is not None:
             st.write("Chọn chỉ số vẽ biểu đồ:")
             cols_ui = st.columns(4)
             selected_keys = [k for i, k in enumerate(numeric_options) if cols_ui[i % 4].checkbox(k.upper(), key=f"c_{k}")]
-            
-            lock_zoom = st.checkbox("🔒 Khóa trượt (Chỉ cho phép Zoom)", value=True)
 
         # --- XỬ LÝ VÀ VẼ BIỂU ĐỒ ---
         if st.button("🚀 TẠO BIỂU ĐỒ & BẢNG ĐỐI CHIẾU", type="primary"):
@@ -140,7 +138,7 @@ if uploaded_file is not None:
                                 yaxis_title=f"Giá trị ({col.upper()})",
                                 xaxis=dict(fixedrange=False),
                                 yaxis=dict(fixedrange=False),
-                                dragmode='zoom' if lock_zoom else 'pan',
+                                dragmode='zoom', # Mặc định luôn là Zoom
                                 hovermode="x unified",
                                 uirevision='constant'
                             )
@@ -150,6 +148,5 @@ if uploaded_file is not None:
                                 st.dataframe(plot_data, use_container_width=True)
                     st.write("---")
     
-    # 2 dòng dưới đây là phần bắt buộc phải có để đóng lệnh try: ở trên
     except Exception as e:
         st.error(f"Lỗi hệ thống: {e}")
