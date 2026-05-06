@@ -82,9 +82,6 @@ if uploaded_file is not None:
             exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển']
             numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
             
-            group_options = ["Không phân nhóm"] + [c for c in df.columns if c in exclude and c != time_col and c != 'stt']
-            group_col = st.selectbox("Tách các đường biểu đồ theo (VD: Tên khu):", group_options)
-            
             st.write("Chọn chỉ số vẽ biểu đồ:")
             cols_ui = st.columns(4)
             selected_keys = [k for i, k in enumerate(numeric_options) if cols_ui[i % 4].checkbox(k.upper(), key=f"c_{k}")]
@@ -99,60 +96,3 @@ if uploaded_file is not None:
                 working_df = df.copy()
                 if time_col and start_d and end_d:
                     working_df[time_col] = pd.to_datetime(working_df[time_col].astype(str).str.replace('-', ':').str.replace(':', '-', 2), errors='coerce')
-                    working_df = working_df.dropna(subset=[time_col])
-                    mask = (working_df[time_col].dt.date >= start_d) & (working_df[time_col].dt.date <= end_d)
-                    working_df = working_df[mask]
-
-                for col in selected_keys:
-                    all_points = []
-                    for idx, row in working_df.iterrows():
-                        main_time = row[time_col]
-                        val = str(row[col]).strip()
-                        group_val = str(row[group_col]) if group_col != "Không phân nhóm" else "Tất cả"
-                        
-                        if val and val.lower() != 'nan':
-                            matches = re.findall(r'(\d{2}-\d{2}-\d{2})/([-+]?\d*\.?\d+)', val)
-                            if matches:
-                                for t_str, v_str in matches:
-                                    try:
-                                        full_t_str = f"{main_time.strftime('%Y-%m-%d')} {t_str.replace('-', ':')}"
-                                        all_points.append({'TG': pd.to_datetime(full_t_str), 'Giá trị': float(v_str), 'Nhóm': group_val})
-                                    except Exception:
-                                        pass
-                            else:
-                                num_match = re.search(r'[-+]?\d*\.?\d+', val)
-                                if num_match:
-                                    all_points.append({'TG': main_time, 'Giá trị': float(num_match.group()), 'Nhóm': group_val})
-
-                    if all_points:
-                        chart_df = pd.DataFrame(all_points)
-                        rule = resample_dict[resample_choice]
-                        
-                        if rule:
-                            plot_data = chart_df.set_index('TG').groupby('Nhóm').resample(rule)['Giá trị'].mean().dropna().reset_index()
-                        else:
-                            plot_data = chart_df.groupby(['TG', 'Nhóm'])['Giá trị'].mean().reset_index()
-
-                        if not plot_data.empty:
-                            plot_data = plot_data.sort_values(by='TG')
-                            st.write(f"### Biểu đồ: {col.upper()}")
-                            
-                            fig = px.line(plot_data, x='TG', y='Giá trị', color='Nhóm', markers=True)
-                            
-                            fig.update_layout(
-                                xaxis_title="Thời gian (TG)",
-                                yaxis_title=f"Giá trị ({col.upper()})",
-                                xaxis=dict(fixedrange=False),
-                                yaxis=dict(fixedrange=False),
-                                dragmode='zoom' if lock_zoom else 'pan',
-                                hovermode="x unified",
-                                legend_title_text="Phân nhóm" if group_col != "Không phân nhóm" else None,
-                                uirevision='constant'
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                            
-                            with st.expander(f"Xem bảng đối chiếu giá trị cho {col.upper()}"):
-                                st.dataframe(plot_data, use_container_width=True)
-                    st.write("---")
-    except Exception as e:
-        st.error(f"Lỗi hệ thống: {e}")
