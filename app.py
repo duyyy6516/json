@@ -7,7 +7,7 @@ import plotly.express as px
 
 # Cấu hình trang
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
-st.title("📊 Công cụ Phân tích Dữ liệu Hệ thống (X-Y Axis)")
+st.title("📊 Công cụ Phân tích ")
 
 # 1. Đồng nhất Key
 def normalize_keys(data):
