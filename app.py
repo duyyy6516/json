@@ -9,7 +9,8 @@ import plotly.express as px
 st.set_page_config(page_title="JSON Data Pro", layout="wide")
 st.title("📊 Công cụ Phân tích Dữ liệu Chuyên sâu")
 
-# 1. Đồng nhất Key
+# --- 1. TỐI ƯU HÓA HIỆU NĂNG VỚI CACHE ---
+@st.cache_data
 def normalize_keys(data):
     if isinstance(data, list):
         return [normalize_keys(item) for item in data]
@@ -17,7 +18,7 @@ def normalize_keys(data):
         return {str(k).strip().lower(): normalize_keys(v) for k, v in data.items()}
     return data
 
-# 2. Làm phẳng JSON
+@st.cache_data
 def flatten_json(y):
     out = {}
     def flatten(x, name=''):
@@ -34,21 +35,25 @@ def flatten_json(y):
     flatten(y)
     return out
 
+@st.cache_data
+def load_and_process_data(file_bytes):
+    raw_data = json.loads(file_bytes)
+    if isinstance(raw_data, dict): 
+        raw_data = [raw_data]
+    clean_json = normalize_keys(raw_data)
+    df = pd.DataFrame([flatten_json(row) for row in clean_json])
+    df = df.dropna(axis=1, how='all').loc[:, ~df.columns.duplicated()]
+    df = df.replace(r'^\s*$', np.nan, regex=True)
+    return df
+
 # --- XỬ LÝ FILE UPLOAD ---
 uploaded_file = st.file_uploader("Tải lên file JSON", type=['json'])
 
 if uploaded_file is not None:
     try:
-        # Xử lý dữ liệu ban đầu
-        raw_data = json.load(uploaded_file)
-        if isinstance(raw_data, dict): 
-            raw_data = [raw_data]
-        
-        clean_json = normalize_keys(raw_data)
-        df = pd.DataFrame([flatten_json(row) for row in clean_json])
-        
-        df = df.dropna(axis=1, how='all').loc[:, ~df.columns.duplicated()]
-        df = df.replace(r'^\s*$', np.nan, regex=True)
+        # Xử lý dữ liệu ban đầu (Đã được Caching cực nhanh)
+        file_bytes = uploaded_file.getvalue().decode("utf-8")
+        df = load_and_process_data(file_bytes)
         display_df = df.fillna("")
 
         # --- TẠO 3 TABS ĐỘC LẬP ---
@@ -140,7 +145,12 @@ if uploaded_file is not None:
                                 plot_data = plot_data.sort_values(by='TG')
                                 st.write(f"### Biểu đồ: {col.upper()}")
                                 
-                                fig = px.line(plot_data, x='TG', y='Giá trị', markers=True)
+                                # Tối ưu hóa WebGL chống lag
+                                num_points = len(plot_data)
+                                use_webgl = 'webgl' if num_points > 1000 else 'svg'
+                                show_markers = num_points <= 1000 
+
+                                fig = px.line(plot_data, x='TG', y='Giá trị', markers=show_markers, render_mode=use_webgl)
                                 fig.update_layout(
                                     xaxis_title="Thời gian (TG)",
                                     yaxis_title=f"Giá trị ({col.upper()})",
@@ -150,7 +160,7 @@ if uploaded_file is not None:
                                 
                                 st.plotly_chart(fig, use_container_width=True)
                                 
-                                with st.expander(f"Xem bảng đối chiếu giá trị cho {col.upper()}"):
+                                with st.expander(f"Xem chi tiết {num_points} điểm dữ liệu cho {col.upper()}"):
                                     st.dataframe(plot_data, use_container_width=True)
                                 st.write("---")
 
@@ -235,11 +245,9 @@ if uploaded_file is not None:
 
                         if not plot_data_multi.empty:
                             plot_data_multi = plot_data_multi.sort_values(by='TG')
-                            
                             yaxis_label = "Giá trị đo (Thực tế)"
                             
                             if normalize_scale:
-                                # GIẢI QUYẾT LỖI Ở ĐÂY: Thêm (x * 0 + 50) để xử lý đường nằm ngang
                                 plot_data_multi['Giá trị hiển thị'] = plot_data_multi.groupby('Loại chỉ số')['Giá trị'].transform(
                                     lambda x: (x - x.min()) / (x.max() - x.min()) * 100 if x.max() != x.min() else (x * 0 + 50)
                                 )
@@ -250,13 +258,19 @@ if uploaded_file is not None:
 
                             st.write(f"### Biểu đồ so sánh đối chiếu")
                             
+                            # Tối ưu hóa WebGL và số lượng Marker
+                            num_multi_points = len(plot_data_multi)
+                            use_webgl_multi = 'webgl' if num_multi_points > 2000 else 'svg'
+                            show_markers_multi = num_multi_points <= 1000
+
                             fig_multi = px.line(
                                 plot_data_multi, 
                                 x='TG', 
                                 y=y_target, 
                                 color='Loại chỉ số', 
-                                markers=True,
-                                custom_data=['Giá trị'] 
+                                markers=show_markers_multi,
+                                custom_data=['Giá trị'],
+                                render_mode=use_webgl_multi
                             )
                             
                             if normalize_scale:
@@ -273,7 +287,7 @@ if uploaded_file is not None:
                             
                             st.plotly_chart(fig_multi, use_container_width=True)
 
-                            with st.expander("Xem bảng dữ liệu so sánh đã được xử lý (Long Format)"):
+                            with st.expander(f"Xem bảng dữ liệu so sánh ({num_multi_points} điểm)"):
                                 st.dataframe(plot_data_multi, use_container_width=True)
                         else:
                             st.error("Dữ liệu sau khi xử lý bị rỗng.")
