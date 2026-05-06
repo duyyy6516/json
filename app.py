@@ -51,7 +51,7 @@ uploaded_file = st.file_uploader("Tải lên file JSON", type=['json'])
 
 if uploaded_file is not None:
     try:
-        # Xử lý dữ liệu ban đầu (Đã được Caching cực nhanh)
+        # Xử lý dữ liệu ban đầu
         file_bytes = uploaded_file.getvalue().decode("utf-8")
         df = load_and_process_data(file_bytes)
         display_df = df.fillna("")
@@ -145,7 +145,6 @@ if uploaded_file is not None:
                                 plot_data = plot_data.sort_values(by='TG')
                                 st.write(f"### Biểu đồ: {col.upper()}")
                                 
-                                # Tối ưu hóa WebGL chống lag
                                 num_points = len(plot_data)
                                 use_webgl = 'webgl' if num_points > 1000 else 'svg'
                                 show_markers = num_points <= 1000 
@@ -158,7 +157,8 @@ if uploaded_file is not None:
                                     xaxis=dict(rangeslider=dict(visible=False), type="date")
                                 )
                                 
-                                st.plotly_chart(fig, use_container_width=True)
+                                # BẬT TÍNH NĂNG ZOOM BẰNG CHUỘT
+                                st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                                 
                                 with st.expander(f"Xem chi tiết {num_points} điểm dữ liệu cho {col.upper()}"):
                                     st.dataframe(plot_data, use_container_width=True)
@@ -258,7 +258,6 @@ if uploaded_file is not None:
 
                             st.write(f"### Biểu đồ so sánh đối chiếu")
                             
-                            # Tối ưu hóa WebGL và số lượng Marker
                             num_multi_points = len(plot_data_multi)
                             use_webgl_multi = 'webgl' if num_multi_points > 2000 else 'svg'
                             show_markers_multi = num_multi_points <= 1000
@@ -285,7 +284,8 @@ if uploaded_file is not None:
                                 xaxis=dict(rangeslider=dict(visible=False), type="date")
                             )
                             
-                            st.plotly_chart(fig_multi, use_container_width=True)
+                            # BẬT TÍNH NĂNG ZOOM BẰNG CHUỘT
+                            st.plotly_chart(fig_multi, use_container_width=True, config={'scrollZoom': True})
 
                             with st.expander(f"Xem bảng dữ liệu so sánh ({num_multi_points} điểm)"):
                                 st.dataframe(plot_data_multi, use_container_width=True)
