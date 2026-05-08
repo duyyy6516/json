@@ -12,23 +12,22 @@ import io
 st.set_page_config(page_title="JSON Data Pro", layout="wide", page_icon="🌱")
 st.title("🌱 Công cụ Phân tích Dữ liệu Nông Nghiệp")
 
-# Cấu hình khoảng dữ liệu "Đẹp" (loại bỏ nhiễu, lỗi cảm biến, ngoài khoảng)
 KHOANG_TOI_UU = {
-    'TEMPKK': (10.0, 45.0),         # Nhiệt độ không khí hợp lý (10 - 45 °C)
-    'HUMIKK': (20.0, 100.0),        # Độ ẩm không khí (20% - 100%)
-    'SOIL_ASKK': (0.0, 200000.0),   # Cường độ ánh sáng môi trường
-    'AS': (0.0, 200000.0),          # Cường độ ánh sáng lúc tưới
-    'NHIỆT ĐỘ': (100.0, 500.0),     # Tương đương 10°C - 50°C
-    'ĐỘ ẨM': (0.0, 100.0),          # Tương đương 0% - 100%
-    'PH': (400.0, 800.0),           # Tương đương pH 4.0 - 8.0
-    'EC': (500.0, 4000.0),          # Tương đương 0.5 - 4.0 mS/cm
-    'N': (0.0, 500.0),              # Nitơ
-    'P': (0.0, 500.0),              # Phốt pho
-    'K': (0.0, 500.0)               # Kali
+    'TEMPKK': (10.0, 45.0),
+    'HUMIKK': (20.0, 100.0),
+    'SOIL_ASKK': (0.0, 200000.0),
+    'AS': (0.0, 200000.0),
+    'NHIỆT ĐỘ': (100.0, 500.0),
+    'ĐỘ ẨM': (0.0, 100.0),
+    'PH': (400.0, 800.0),
+    'EC': (500.0, 4000.0),
+    'N': (0.0, 500.0),
+    'P': (0.0, 500.0),
+    'K': (0.0, 500.0)
 }
 
 # ==============================================================================
-# 1. CÁC HÀM XỬ LÝ LÕI (CÓ CACHE)
+# 1. CÁC HÀM XỬ LÝ LÕI
 # ==============================================================================
 @st.cache_data
 def normalize_keys(data):
@@ -76,36 +75,33 @@ def load_and_process_data(file_bytes):
         )
     return df, time_col
 
-# HÀM MỚI: TỰ ĐỘNG TÁCH MÙA VỤ DỰA TRÊN KHOẢNG TRỐNG DỮ LIỆU (ĐÃ SỬA LỖI)
+# HÀM MỚI: TỰ ĐỘNG TÁCH MÙA VỤ BẰNG AI (KHÔNG CẦN NHẬP SỐ)
 @st.cache_data
-def detect_seasons(df, time_col, gap_days, sensor_cols):
+def detect_seasons_auto(df, sensor_cols):
     if '_parsed_time' not in df.columns or df.empty:
         return df
         
-    # Tìm những dòng có ÍT NHẤT 1 dữ liệu cảm biến (lọc bỏ các dòng rỗng vô nghĩa giữa 2 vụ)
     valid_rows_mask = df[sensor_cols].notna().any(axis=1)
-    
-    # Sử dụng cột thời gian đã được chuẩn hóa để tính toán khoảng cách
     valid_times = df.loc[valid_rows_mask, '_parsed_time'].sort_values()
     
     if valid_times.empty:
         df['Mùa vụ'] = "Vụ 1"
         return df
         
-    # Tính khoảng cách thời gian giữa các lần có dữ liệu
     time_diffs = valid_times.diff()
     
     season_mapping = {}
     season_num = 1
     
+    # Tự động cắt vụ nếu phát hiện khoảng trống dữ liệu >= 2 ngày (48 tiếng)
+    AUTO_GAP_DAYS = 2 
+    
     for idx, diff in time_diffs.items():
-        # Nếu khoảng trống >= gap_days, cắt sang vụ mới
-        if pd.notna(diff) and diff.days >= gap_days:
+        if pd.notna(diff) and diff.days >= AUTO_GAP_DAYS:
             season_num += 1
         season_mapping[idx] = f"Vụ {season_num}"
         
     df['Mùa vụ'] = pd.Series(season_mapping)
-    # Lấp đầy Mùa Vụ cho những dòng rác nằm xen kẽ để không bị lỗi
     df['Mùa vụ'] = df['Mùa vụ'].ffill().bfill()
     
     return df
@@ -130,21 +126,13 @@ def extract_sensor_data(df, selected_cols):
                 for t_str, v_str in matches:
                     try:
                         full_t_str = f"{main_time.strftime('%Y-%m-%d')} {t_str.replace('-', ':')}"
-                        records.append({
-                            'TG': pd.to_datetime(full_t_str), 
-                            'Giá trị': float(v_str), 
-                            'Chỉ số': col_name.upper()
-                        })
+                        records.append({'TG': pd.to_datetime(full_t_str), 'Giá trị': float(v_str), 'Chỉ số': col_name.upper()})
                     except Exception:
                         pass
             else:
                 num_match = re.search(r'[-+]?\d*\.?\d+', val)
                 if num_match:
-                    records.append({
-                        'TG': main_time, 
-                        'Giá trị': float(num_match.group()), 
-                        'Chỉ số': col_name.upper()
-                    })
+                    records.append({'TG': main_time, 'Giá trị': float(num_match.group()), 'Chỉ số': col_name.upper()})
                     
     return pd.DataFrame(records)
 
@@ -159,8 +147,7 @@ def generate_chart(df, title, is_multi=False):
         fig = px.line(df, x='TG', y='Giá trị', markers=show_markers, render_mode=use_webgl)
         
     fig.update_layout(
-        title=f"<b>{title}</b>",
-        xaxis_title="Thời gian", yaxis_title="Giá trị",
+        title=f"<b>{title}</b>", xaxis_title="Thời gian", yaxis_title="Giá trị",
         hovermode="x unified", dragmode='pan',
         xaxis=dict(rangeslider=dict(visible=False), type="date")
     )
@@ -182,26 +169,20 @@ if uploaded_file is not None:
         exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển', '_parsed_time', 'mùa vụ']
         numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
 
-        # --- GIAO DIỆN TÁCH MÙA VỤ ---
+        # --- GIAO DIỆN TÁCH MÙA VỤ SIÊU GỌN ---
         st.markdown("---")
-        st.subheader("🌾 Quản lý Mùa Vụ (Tự động tách)")
-        col_s1, col_s2 = st.columns([1, 2])
+        st.subheader("🌾 Quản lý Mùa Vụ")
         
-        with col_s1:
-            gap_days = st.number_input("Số ngày nghỉ giữa 2 vụ (để tự cắt):", min_value=1, value=5, help="Ví dụ: Nếu 5 ngày liên tục hệ thống không có dữ liệu, code sẽ tự động hiểu là đã sang Vụ mới.")
-            
-        # Áp dụng hàm tách vụ dựa trên số ngày bạn chọn
-        df = detect_seasons(df, time_col, gap_days, numeric_options)
+        # Gọi hàm tách vụ tự động hoàn toàn
+        df = detect_seasons_auto(df, numeric_options)
         
-        with col_s2:
-            season_options = ["Tất cả các vụ"] + list(df['Mùa vụ'].unique())
-            selected_season = st.selectbox("📌 Chọn dữ liệu để phân tích:", season_options)
+        season_options = ["Tất cả các vụ"] + list(df['Mùa vụ'].unique())
+        selected_season = st.selectbox("📌 Hệ thống đã quét khoảng trống trong file và tách được các vụ sau. Mời bạn chọn:", season_options)
 
         # Lọc toàn bộ df theo vụ đã chọn
         if selected_season != "Tất cả các vụ":
             df = df[df['Mùa vụ'] == selected_season]
 
-        # Sau khi lọc xong vụ, tính lại mốc thời gian Min/Max
         min_d, max_d = None, None
         if '_parsed_time' in df.columns:
             valid_ts = df['_parsed_time'].dropna()
@@ -213,7 +194,7 @@ if uploaded_file is not None:
         # --- CÁC TABS ---
         tab1, tab2, tab3 = st.tabs(["🗂️ Bảng dữ liệu gốc", "📈 Biểu đồ Đơn", "📊 Biểu đồ Lồng nhau"])
 
-        # --- TAB 1: DỮ LIỆU GỐC ---
+        # TAB 1
         with tab1:
             col_h1, col_h2 = st.columns([3, 1])
             with col_h1:
@@ -223,7 +204,7 @@ if uploaded_file is not None:
                 st.download_button("📥 Tải xuống CSV", data=csv, file_name='data_export.csv', mime='text/csv', use_container_width=True)
             st.dataframe(display_df, use_container_width=True)
 
-        # --- TAB 2: BIỂU ĐỒ ĐƠN LẺ ---
+        # TAB 2
         with tab2:
             st.write("⚙️ Thiết lập biểu đồ đơn lẻ")
             col1, col2 = st.columns([1, 2])
@@ -231,7 +212,6 @@ if uploaded_file is not None:
                 sel_date_2 = st.date_input("Lọc theo ngày:", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="date_tab2") if min_d else None
                 start_d_2 = sel_date_2[0] if sel_date_2 else None
                 end_d_2 = sel_date_2[1] if sel_date_2 and len(sel_date_2) == 2 else start_d_2
-                
                 res_choice_2 = st.selectbox("Làm mượt:", ["Nguyên bản", "TB mỗi phút", "TB mỗi 5 phút"], key="res_tab2")
                 r_dict = {"Nguyên bản": None, "TB mỗi phút": "1min", "TB mỗi 5 phút": "5min"}
 
@@ -250,31 +230,22 @@ if uploaded_file is not None:
                     
                     if not chart_df.empty:
                         rule = r_dict[res_choice_2]
-                        if start_d_2 and end_d_2 and (end_d_2 - start_d_2).days > 7 and not rule:
-                            rule = "5min"
-
+                        if start_d_2 and end_d_2 and (end_d_2 - start_d_2).days > 7 and not rule: rule = "5min"
                         for col in selected_keys_2:
                             sub_df = chart_df[chart_df['Chỉ số'] == col.upper()]
                             ten_chi_so = col.upper()
-                            
                             if ten_chi_so in KHOANG_TOI_UU:
                                 min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
                                 sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
-                                
                             if sub_df.empty: continue
-                            
-                            if rule:
-                                plot_data = sub_df.set_index('TG').resample(rule)['Giá trị'].mean().dropna().reset_index()
-                            else:
-                                plot_data = sub_df.groupby('TG')['Giá trị'].mean().reset_index()
-                                
+                            if rule: plot_data = sub_df.set_index('TG').resample(rule)['Giá trị'].mean().dropna().reset_index()
+                            else: plot_data = sub_df.groupby('TG')['Giá trị'].mean().reset_index()
                             plot_data = plot_data.sort_values(by='TG')
                             fig, pts = generate_chart(plot_data, f"{ten_chi_so} ({selected_season})", is_multi=False)
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
-                    else:
-                        st.info("Không có dữ liệu.")
+                    else: st.info("Không có dữ liệu.")
 
-        # --- TAB 3: BIỂU ĐỒ LỒNG NHAU ---
+        # TAB 3
         with tab3:
             st.write("⚙️ Thiết lập biểu đồ lồng nhau")
             col1_m, col2_m = st.columns([1, 2])
@@ -306,24 +277,17 @@ if uploaded_file is not None:
                                 min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
                                 sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
                             if not sub_df.empty: clean_dfs.append(sub_df)
-                        
                         multi_chart_df = pd.concat(clean_dfs) if clean_dfs else pd.DataFrame()
                         
                         if not multi_chart_df.empty:
                             rule = r_dict[res_choice_3]
-                            if start_d_3 and end_d_3 and (end_d_3 - start_d_3).days > 7 and not rule:
-                                rule = "5min"
-                                
-                            if rule:
-                                plot_data = multi_chart_df.set_index('TG').groupby('Chỉ số')['Giá trị'].resample(rule).mean().dropna().reset_index()
-                            else:
-                                plot_data = multi_chart_df.groupby(['TG', 'Chỉ số'])['Giá trị'].mean().reset_index()
-                                
+                            if start_d_3 and end_d_3 and (end_d_3 - start_d_3).days > 7 and not rule: rule = "5min"
+                            if rule: plot_data = multi_chart_df.set_index('TG').groupby('Chỉ số')['Giá trị'].resample(rule).mean().dropna().reset_index()
+                            else: plot_data = multi_chart_df.groupby(['TG', 'Chỉ số'])['Giá trị'].mean().reset_index()
                             plot_data = plot_data.sort_values(by='TG')
                             fig, pts = generate_chart(plot_data, f"Biểu đồ so sánh ({selected_season})", is_multi=True)
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
-                    else:
-                        st.info("Không có dữ liệu.")
+                    else: st.info("Không có dữ liệu.")
 
     except Exception as e:
         st.error(f"Đã xảy ra lỗi: {e}")
