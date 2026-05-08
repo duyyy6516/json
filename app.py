@@ -216,6 +216,9 @@ if uploaded_file is not None:
                 end_d_2 = sel_date_2[1] if sel_date_2 and len(sel_date_2) == 2 else start_d_2
                 res_choice_2 = st.selectbox("Làm mượt:", ["Nguyên bản", "TB mỗi phút", "TB mỗi 5 phút"], key="res_tab2")
                 r_dict = {"Nguyên bản": None, "TB mỗi phút": "1min", "TB mỗi 5 phút": "5min"}
+                
+                # Checkbox lọc dữ liệu
+                filter_data_2 = st.checkbox("✅ Chỉ lấy dữ liệu Sạch (Bỏ nhiễu/lỗi)", value=True, help="Tích vào để lọc bỏ các thông số ảo. Bỏ tích để vẽ nguyên bản 100% dữ liệu có trong file.")
 
             with col2:
                 st.write("Chọn chỉ số:")
@@ -236,7 +239,9 @@ if uploaded_file is not None:
                         for col in selected_keys_2:
                             sub_df = chart_df[chart_df['Chỉ số'] == col.upper()]
                             ten_chi_so = col.upper()
-                            if ten_chi_so in KHOANG_TOI_UU:
+                            
+                            # LOGIC: Chỉ lọc sạch nếu người dùng tích ô Checkbox
+                            if filter_data_2 and ten_chi_so in KHOANG_TOI_UU:
                                 min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
                                 sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
                             
@@ -251,7 +256,8 @@ if uploaded_file is not None:
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                             
                             # 2. Hiển thị bảng đối chứng (Bám sát 100% biểu đồ)
-                            with st.expander(f"📋 Bảng số liệu chi tiết của biểu đồ trên để đối chứng ({pts} điểm)"):
+                            trang_thai_loc = "Đã lọc sạch" if filter_data_2 else "Chưa lọc - Gốc 100%"
+                            with st.expander(f"📋 Bảng số liệu của biểu đồ trên để đối chứng ({pts} điểm - {trang_thai_loc})"):
                                 st.dataframe(plot_data, use_container_width=True)
                             st.write("---")
                     else: st.info("Không có dữ liệu hợp lệ.")
@@ -272,6 +278,9 @@ if uploaded_file is not None:
                 start_d_3 = sel_date_3[0] if sel_date_3 else None
                 end_d_3 = sel_date_3[1] if sel_date_3 and len(sel_date_3) == 2 else start_d_3
                 res_choice_3 = st.selectbox("Làm mượt:", ["Nguyên bản", "TB mỗi phút", "TB mỗi 5 phút"], key="res_multi")
+                
+                # Checkbox lọc dữ liệu
+                filter_data_3 = st.checkbox("✅ Chỉ lấy dữ liệu Sạch (Bỏ nhiễu/lỗi)", value=True, help="Tích vào để lọc bỏ các thông số ảo. Bỏ tích để vẽ nguyên bản 100% dữ liệu có trong file.", key="filter_tab3")
 
             if st.button("🚀 TẠO BIỂU ĐỒ ĐỐI CHIẾU", type="primary", key="btn_multi"):
                 if len(selected_keys_3) < 2:
@@ -286,10 +295,14 @@ if uploaded_file is not None:
                         for col in selected_keys_3:
                             sub_df = multi_chart_df[multi_chart_df['Chỉ số'] == col.upper()]
                             ten_chi_so = col.upper()
-                            if ten_chi_so in KHOANG_TOI_UU:
+                            
+                            # LOGIC: Chỉ lọc sạch nếu người dùng tích ô Checkbox
+                            if filter_data_3 and ten_chi_so in KHOANG_TOI_UU:
                                 min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
                                 sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
+                                
                             if not sub_df.empty: clean_dfs.append(sub_df)
+                            
                         multi_chart_df = pd.concat(clean_dfs) if clean_dfs else pd.DataFrame()
                         
                         if not multi_chart_df.empty:
@@ -304,7 +317,8 @@ if uploaded_file is not None:
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                             
                             # 2. Hiển thị bảng đối chiếu gộp (Bám sát 100% biểu đồ)
-                            with st.expander(f"📋 Bảng số liệu gộp của biểu đồ trên để đối chứng ({pts} điểm)"):
+                            trang_thai_loc_3 = "Đã lọc sạch" if filter_data_3 else "Chưa lọc - Gốc 100%"
+                            with st.expander(f"📋 Bảng số liệu gộp của biểu đồ trên để đối chứng ({pts} điểm - {trang_thai_loc_3})"):
                                 pivot_df = plot_data.pivot(index='TG', columns='Chỉ số', values='Giá trị').reset_index()
                                 st.dataframe(pivot_df, use_container_width=True)
                     else: st.info("Không có dữ liệu hợp lệ.")
