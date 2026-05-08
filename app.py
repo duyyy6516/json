@@ -75,10 +75,9 @@ def load_and_process_data(file_bytes):
         )
     return df, time_col
 
-# HÀM MỚI: TÁCH VỤ (Đã thêm cơ chế chống lỗi đụng độ bộ nhớ cache)
 @st.cache_data
 def detect_seasons(df_input, sensor_cols, gap_days):
-    df = df_input.copy() # Bọc copy để không làm ảnh hưởng dữ liệu gốc của Tab 2 và 3
+    df = df_input.copy()
     if '_parsed_time' not in df.columns or df.empty:
         return df
         
@@ -160,7 +159,6 @@ if uploaded_file is not None:
     try:
         with st.spinner("Đang xử lý dữ liệu..."):
             file_bytes = uploaded_file.getvalue().decode("utf-8")
-            # df ở đây là dữ liệu gốc tinh khiết, dùng cho Tab 2 và 3
             df, time_col = load_and_process_data(file_bytes)
 
         exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển', '_parsed_time', 'mùa vụ']
@@ -177,24 +175,20 @@ if uploaded_file is not None:
         tab1, tab2, tab3 = st.tabs(["🗂️ Bảng dữ liệu gốc", "📈 Biểu đồ Đơn", "📊 Biểu đồ Lồng nhau"])
 
         # ==========================================
-        # TAB 1: BẢNG DỮ LIỆU (CÓ TÍNH NĂNG CHIA VỤ)
+        # TAB 1: BẢNG DỮ LIỆU (CÓ CHỨC NĂNG CHIA VỤ)
         # ==========================================
         with tab1:
             st.subheader("🌾 Lọc và xem dữ liệu theo Mùa Vụ")
-            
-            # Đưa toàn bộ cấu hình vào gọn gàng bên trong Tab 1
             col_gap1, col_gap2 = st.columns([1, 2])
             with col_gap1:
                 gap_days = st.number_input("Khoảng trống để tính là vụ mới (Ngày):", min_value=1, value=7)
                 
-            # Tạo một dataframe riêng cho Tab 1 có chứa cột Mùa vụ
             df_with_seasons = detect_seasons(df, numeric_options, gap_days)
             season_options = ["Tất cả các vụ"] + list(df_with_seasons['Mùa vụ'].unique())
             
             with col_gap2:
-                selected_season = st.selectbox("📌 Chọn mùa vụ để xuất bảng dữ liệu:", season_options)
+                selected_season = st.selectbox("📌 Chọn mùa vụ để xem bảng & tải CSV:", season_options)
 
-            # Lọc dữ liệu hiển thị theo vụ
             if selected_season != "Tất cả các vụ":
                 df_tab1 = df_with_seasons[df_with_seasons['Mùa vụ'] == selected_season]
             else:
@@ -211,7 +205,7 @@ if uploaded_file is not None:
             st.dataframe(display_df, use_container_width=True)
 
         # ==========================================
-        # TAB 2: BIỂU ĐỒ ĐƠN LẺ (DÙNG FULL DỮ LIỆU GỐC)
+        # TAB 2: BIỂU ĐỒ ĐƠN LẺ
         # ==========================================
         with tab2:
             st.write("⚙️ Thiết lập biểu đồ đơn lẻ")
@@ -232,7 +226,6 @@ if uploaded_file is not None:
                 if not selected_keys_2:
                     st.warning("Hãy chọn ít nhất 1 chỉ số!")
                 else:
-                    # Lọc dựa trên dữ liệu df gốc (không bị ảnh hưởng bởi Mùa vụ ở Tab 1)
                     mask = (df['_parsed_time'].dt.date >= start_d_2) & (df['_parsed_time'].dt.date <= end_d_2)
                     filtered_df = df[mask]
                     chart_df = extract_sensor_data(filtered_df, selected_keys_2)
@@ -246,17 +239,25 @@ if uploaded_file is not None:
                             if ten_chi_so in KHOANG_TOI_UU:
                                 min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
                                 sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
+                            
                             if sub_df.empty: continue
+                            
                             if rule: plot_data = sub_df.set_index('TG').resample(rule)['Giá trị'].mean().dropna().reset_index()
                             else: plot_data = sub_df.groupby('TG')['Giá trị'].mean().reset_index()
                             plot_data = plot_data.sort_values(by='TG')
                             
+                            # 1. Vẽ biểu đồ
                             fig, pts = generate_chart(plot_data, f"Chỉ số: {ten_chi_so}", is_multi=False)
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
-                    else: st.info("Không có dữ liệu hợp lệ trong khoảng thời gian đã chọn.")
+                            
+                            # 2. Hiển thị bảng đối chứng (Bám sát 100% biểu đồ)
+                            with st.expander(f"📋 Bảng số liệu chi tiết của biểu đồ trên để đối chứng ({pts} điểm)"):
+                                st.dataframe(plot_data, use_container_width=True)
+                            st.write("---")
+                    else: st.info("Không có dữ liệu hợp lệ.")
 
         # ==========================================
-        # TAB 3: BIỂU ĐỒ LỒNG NHAU (DÙNG FULL DỮ LIỆU GỐC)
+        # TAB 3: BIỂU ĐỒ LỒNG NHAU 
         # ==========================================
         with tab3:
             st.write("⚙️ Thiết lập biểu đồ lồng nhau")
@@ -298,9 +299,15 @@ if uploaded_file is not None:
                             else: plot_data = multi_chart_df.groupby(['TG', 'Chỉ số'])['Giá trị'].mean().reset_index()
                             plot_data = plot_data.sort_values(by='TG')
                             
+                            # 1. Vẽ biểu đồ
                             fig, pts = generate_chart(plot_data, f"Biểu đồ Đối chiếu Trực tiếp", is_multi=True)
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
-                    else: st.info("Không có dữ liệu hợp lệ trong khoảng thời gian đã chọn.")
+                            
+                            # 2. Hiển thị bảng đối chiếu gộp (Bám sát 100% biểu đồ)
+                            with st.expander(f"📋 Bảng số liệu gộp của biểu đồ trên để đối chứng ({pts} điểm)"):
+                                pivot_df = plot_data.pivot(index='TG', columns='Chỉ số', values='Giá trị').reset_index()
+                                st.dataframe(pivot_df, use_container_width=True)
+                    else: st.info("Không có dữ liệu hợp lệ.")
 
     except Exception as e:
         st.error(f"Đã xảy ra lỗi: {e}")
