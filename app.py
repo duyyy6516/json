@@ -75,7 +75,6 @@ def load_and_process_data(file_bytes):
         )
     return df, time_col
 
-# HÀM MỚI: TỰ ĐỘNG TÁCH MÙA VỤ BẰNG AI (KHÔNG CẦN NHẬP SỐ)
 @st.cache_data
 def detect_seasons_auto(df, sensor_cols):
     if '_parsed_time' not in df.columns or df.empty:
@@ -89,11 +88,8 @@ def detect_seasons_auto(df, sensor_cols):
         return df
         
     time_diffs = valid_times.diff()
-    
     season_mapping = {}
     season_num = 1
-    
-    # Tự động cắt vụ nếu phát hiện khoảng trống dữ liệu >= 2 ngày (48 tiếng)
     AUTO_GAP_DAYS = 2 
     
     for idx, diff in time_diffs.items():
@@ -103,7 +99,6 @@ def detect_seasons_auto(df, sensor_cols):
         
     df['Mùa vụ'] = pd.Series(season_mapping)
     df['Mùa vụ'] = df['Mùa vụ'].ffill().bfill()
-    
     return df
 
 # ==============================================================================
@@ -169,42 +164,46 @@ if uploaded_file is not None:
         exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển', '_parsed_time', 'mùa vụ']
         numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
 
-        # --- GIAO DIỆN TÁCH MÙA VỤ SIÊU GỌN ---
-        st.markdown("---")
-        st.subheader("🌾 Quản lý Mùa Vụ")
-        
-        # Gọi hàm tách vụ tự động hoàn toàn
+        # Áp dụng tự động tách vụ vào df gốc
         df = detect_seasons_auto(df, numeric_options)
-        
-        season_options = ["Tất cả các vụ"] + list(df['Mùa vụ'].unique())
-        selected_season = st.selectbox("📌 Hệ thống đã quét khoảng trống trong file và tách được các vụ sau. Mời bạn chọn:", season_options)
 
-        # Lọc toàn bộ df theo vụ đã chọn
-        if selected_season != "Tất cả các vụ":
-            df = df[df['Mùa vụ'] == selected_season]
-
+        # Lấy khoảng thời gian của TOÀN BỘ dữ liệu để áp dụng cho Tab 2, 3
         min_d, max_d = None, None
         if '_parsed_time' in df.columns:
             valid_ts = df['_parsed_time'].dropna()
             if not valid_ts.empty:
                 min_d, max_d = valid_ts.min().date(), valid_ts.max().date()
 
-        display_df = df.drop(columns=['_parsed_time'], errors='ignore').fillna("")
-
-        # --- CÁC TABS ---
+        st.markdown("---")
         tab1, tab2, tab3 = st.tabs(["🗂️ Bảng dữ liệu gốc", "📈 Biểu đồ Đơn", "📊 Biểu đồ Lồng nhau"])
 
-        # TAB 1
+        # ==========================================
+        # TAB 1: BẢNG DỮ LIỆU (CÓ LỌC MÙA VỤ)
+        # ==========================================
         with tab1:
+            st.subheader("🌾 Lọc và xem dữ liệu theo Mùa Vụ")
+            season_options = ["Tất cả các vụ"] + list(df['Mùa vụ'].unique())
+            selected_season = st.selectbox("📌 Chọn mùa vụ để xuất bảng dữ liệu:", season_options)
+
+            # Chỉ lọc df cho riêng Tab 1
+            if selected_season != "Tất cả các vụ":
+                df_tab1 = df[df['Mùa vụ'] == selected_season]
+            else:
+                df_tab1 = df.copy()
+
+            display_df = df_tab1.drop(columns=['_parsed_time'], errors='ignore').fillna("")
+
             col_h1, col_h2 = st.columns([3, 1])
             with col_h1:
-                st.write(f"Đang hiển thị: **{selected_season}** ({len(df)} bản ghi)")
+                st.write(f"Đang hiển thị: **{selected_season}** ({len(df_tab1)} bản ghi)")
             with col_h2:
                 csv = display_df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Tải xuống CSV", data=csv, file_name='data_export.csv', mime='text/csv', use_container_width=True)
+                st.download_button("📥 Tải xuống CSV", data=csv, file_name=f'data_{selected_season}.csv', mime='text/csv', use_container_width=True)
             st.dataframe(display_df, use_container_width=True)
 
-        # TAB 2
+        # ==========================================
+        # TAB 2: BIỂU ĐỒ ĐƠN LẺ (DÙNG FULL DỮ LIỆU)
+        # ==========================================
         with tab2:
             st.write("⚙️ Thiết lập biểu đồ đơn lẻ")
             col1, col2 = st.columns([1, 2])
@@ -224,6 +223,7 @@ if uploaded_file is not None:
                 if not selected_keys_2:
                     st.warning("Hãy chọn ít nhất 1 chỉ số!")
                 else:
+                    # Lọc dựa trên toàn bộ df
                     mask = (df['_parsed_time'].dt.date >= start_d_2) & (df['_parsed_time'].dt.date <= end_d_2)
                     filtered_df = df[mask]
                     chart_df = extract_sensor_data(filtered_df, selected_keys_2)
@@ -241,11 +241,14 @@ if uploaded_file is not None:
                             if rule: plot_data = sub_df.set_index('TG').resample(rule)['Giá trị'].mean().dropna().reset_index()
                             else: plot_data = sub_df.groupby('TG')['Giá trị'].mean().reset_index()
                             plot_data = plot_data.sort_values(by='TG')
-                            fig, pts = generate_chart(plot_data, f"{ten_chi_so} ({selected_season})", is_multi=False)
+                            
+                            fig, pts = generate_chart(plot_data, f"Chỉ số: {ten_chi_so}", is_multi=False)
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
-                    else: st.info("Không có dữ liệu.")
+                    else: st.info("Không có dữ liệu hợp lệ trong khoảng thời gian đã chọn.")
 
-        # TAB 3
+        # ==========================================
+        # TAB 3: BIỂU ĐỒ LỒNG NHAU (DÙNG FULL DỮ LIỆU)
+        # ==========================================
         with tab3:
             st.write("⚙️ Thiết lập biểu đồ lồng nhau")
             col1_m, col2_m = st.columns([1, 2])
@@ -264,6 +267,7 @@ if uploaded_file is not None:
                 if len(selected_keys_3) < 2:
                     st.warning("Hãy chọn ít nhất 2 chỉ số!")
                 else:
+                    # Lọc dựa trên toàn bộ df
                     mask = (df['_parsed_time'].dt.date >= start_d_3) & (df['_parsed_time'].dt.date <= end_d_3)
                     filtered_df = df[mask]
                     multi_chart_df = extract_sensor_data(filtered_df, selected_keys_3)
@@ -285,9 +289,10 @@ if uploaded_file is not None:
                             if rule: plot_data = multi_chart_df.set_index('TG').groupby('Chỉ số')['Giá trị'].resample(rule).mean().dropna().reset_index()
                             else: plot_data = multi_chart_df.groupby(['TG', 'Chỉ số'])['Giá trị'].mean().reset_index()
                             plot_data = plot_data.sort_values(by='TG')
-                            fig, pts = generate_chart(plot_data, f"Biểu đồ so sánh ({selected_season})", is_multi=True)
+                            
+                            fig, pts = generate_chart(plot_data, f"Biểu đồ Đối chiếu Trực tiếp", is_multi=True)
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
-                    else: st.info("Không có dữ liệu.")
+                    else: st.info("Không có dữ liệu hợp lệ trong khoảng thời gian đã chọn.")
 
     except Exception as e:
         st.error(f"Đã xảy ra lỗi: {e}")
