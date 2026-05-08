@@ -12,22 +12,19 @@ import io
 st.set_page_config(page_title="JSON Data Pro", layout="wide", page_icon="🌱")
 st.title("🌱 Công cụ Phân tích Dữ liệu Nông Nghiệp")
 
-# Cấu hình khoảng dữ liệu "Đẹp" (Đã mở rộng để chạy được cho CẢ 2 FILE)
+# KHOẢNG TỐI ƯU ĐÃ ĐƯỢC ĐƯA VỀ CHUẨN THỰC TẾ (Vì dữ liệu đã được tự động quy đổi)
 KHOANG_TOI_UU = {
     'TEMPKK': (-10.0, 100.0),       
     'HUMIKK': (0.0, 100.0),        
     'SOIL_ASKK': (0.0, 200000.0),   
     'AS': (0.0, 200000.0),          
     
-    # Mở rộng dải cho phép cả số bình thường (VD: 25 độ) và số nhân 100 (VD: 2500)
-    'NHIỆT ĐỘ': (-10.0, 6000.0),     
-    'ĐỘ ẨM': (0.0, 10000.0),          
+    'NHIỆT ĐỘ': (-10.0, 100.0),    # Đã về chuẩn (vd: 33.1 độ)
+    'ĐỘ ẨM': (0.0, 100.0),          
     
-    # Mở rộng dải để nhận cả pH=6.5 và pH=650.0
-    'PH': (0.0, 1400.0),           
-    'TBPH': (0.0, 1400.0),         
+    'PH': (0.0, 14.0),             # Đã về chuẩn 0 - 14
+    'TBPH': (0.0, 14.0),         
 
-    # Mở rộng dải để nhận cả EC=2.0 và EC=2000.0
     'EC': (0.0, 10000.0),          
     'TBEC': (0.0, 10000.0),        
     
@@ -112,7 +109,7 @@ def detect_seasons(df_input, sensor_cols, gap_days):
     return df
 
 # ==============================================================================
-# 2. CÁC HÀM TIỆN ÍCH CHO BIỂU ĐỒ
+# 2. CÁC HÀM TIỆN ÍCH CHO BIỂU ĐỒ (ĐÃ NÂNG CẤP TỰ ĐỘNG QUY ĐỔI)
 # ==============================================================================
 def extract_sensor_data(df, selected_cols):
     records = []
@@ -126,18 +123,32 @@ def extract_sensor_data(df, selected_cols):
             if not val or val.lower() == 'nan':
                 continue
                 
+            col_upper = col_name.upper()
+            
+            # --- LOGIC TỰ ĐỘNG QUY ĐỔI SỐ LIỆU CẢM BIẾN ---
+            def process_val(v_str):
+                v = float(v_str)
+                # Nếu pH > 14 (ví dụ 650.0), tự chia 100 để về 6.5
+                if col_upper in ['PH', 'TBPH'] and v > 14:
+                    return v / 100.0
+                # Nếu Nhiệt độ > 100 (ví dụ 331.0), tự chia 10 để về 33.1
+                if col_upper in ['NHIỆT ĐỘ'] and v > 100:
+                    return v / 10.0
+                return v
+            # ----------------------------------------------
+                
             matches = re.findall(r'(\d{2}-\d{2}-\d{2})/([-+]?\d*\.?\d+)', val)
             if matches:
                 for t_str, v_str in matches:
                     try:
                         full_t_str = f"{main_time.strftime('%Y-%m-%d')} {t_str.replace('-', ':')}"
-                        records.append({'TG': pd.to_datetime(full_t_str), 'Giá trị': float(v_str), 'Chỉ số': col_name.upper()})
+                        records.append({'TG': pd.to_datetime(full_t_str), 'Giá trị': process_val(v_str), 'Chỉ số': col_upper})
                     except Exception:
                         pass
             else:
                 num_match = re.search(r'[-+]?\d*\.?\d+', val)
                 if num_match:
-                    records.append({'TG': main_time, 'Giá trị': float(num_match.group()), 'Chỉ số': col_name.upper()})
+                    records.append({'TG': main_time, 'Giá trị': process_val(num_match.group()), 'Chỉ số': col_upper})
                     
     return pd.DataFrame(records)
 
@@ -174,7 +185,6 @@ if uploaded_file is not None:
         exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển', '_parsed_time', 'mùa vụ']
         numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
 
-        # Lấy khoảng thời gian của TOÀN BỘ dữ liệu để áp dụng chung
         min_d, max_d = None, None
         if '_parsed_time' in df.columns:
             valid_ts = df['_parsed_time'].dropna()
@@ -185,7 +195,7 @@ if uploaded_file is not None:
         tab1, tab2, tab3 = st.tabs(["🗂️ Bảng dữ liệu gốc", "📈 Biểu đồ Đơn", "📊 Biểu đồ Lồng nhau"])
 
         # ==========================================
-        # TAB 1: BẢNG DỮ LIỆU (CÓ CHỨC NĂNG CHIA VỤ)
+        # TAB 1: BẢNG DỮ LIỆU
         # ==========================================
         with tab1:
             st.subheader("🌾 Lọc và xem dữ liệu theo Mùa Vụ")
@@ -227,8 +237,7 @@ if uploaded_file is not None:
                 res_choice_2 = st.selectbox("Làm mượt:", ["Nguyên bản", "TB mỗi phút", "TB mỗi 5 phút"], key="res_tab2")
                 r_dict = {"Nguyên bản": None, "TB mỗi phút": "1min", "TB mỗi 5 phút": "5min"}
                 
-                # Checkbox lọc dữ liệu
-                filter_data_2 = st.checkbox("✅ Chỉ lấy dữ liệu Sạch (Bỏ nhiễu/lỗi)", value=True, help="Tích vào để lọc bỏ các thông số ảo. Bỏ tích để vẽ nguyên bản 100% dữ liệu có trong file.")
+                filter_data_2 = st.checkbox("✅ Chỉ lấy dữ liệu Sạch (Bỏ nhiễu/lỗi)", value=True, help="Tích vào để lọc bỏ các thông số ảo. Bỏ tích để xem số liệu nguyên gốc.")
 
             with col2:
                 st.write("Chọn chỉ số:")
@@ -241,7 +250,7 @@ if uploaded_file is not None:
                 else:
                     mask = (df['_parsed_time'].dt.date >= start_d_2) & (df['_parsed_time'].dt.date <= end_d_2)
                     filtered_df = df[mask]
-                    chart_df = extract_sensor_data(filtered_df, selected_keys_2)
+                    chart_df = extract_sensor_data(filtered_df, selected_keys_2) # Dữ liệu tại đây đã được quy đổi chuẩn
                     
                     if not chart_df.empty:
                         rule = r_dict[res_choice_2]
@@ -250,7 +259,6 @@ if uploaded_file is not None:
                             sub_df = chart_df[chart_df['Chỉ số'] == col.upper()]
                             ten_chi_so = col.upper()
                             
-                            # LOGIC: Chỉ lọc sạch nếu người dùng tích ô Checkbox
                             if filter_data_2 and ten_chi_so in KHOANG_TOI_UU:
                                 min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
                                 sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
@@ -261,11 +269,9 @@ if uploaded_file is not None:
                             else: plot_data = sub_df.groupby('TG')['Giá trị'].mean().reset_index()
                             plot_data = plot_data.sort_values(by='TG')
                             
-                            # 1. Vẽ biểu đồ
                             fig, pts = generate_chart(plot_data, f"Chỉ số: {ten_chi_so}", is_multi=False)
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                             
-                            # 2. Hiển thị bảng đối chứng (Bám sát 100% biểu đồ)
                             trang_thai_loc = "Đã lọc sạch" if filter_data_2 else "Chưa lọc - Gốc 100%"
                             with st.expander(f"📋 Bảng số liệu của biểu đồ trên để đối chứng ({pts} điểm - {trang_thai_loc})"):
                                 st.dataframe(plot_data, use_container_width=True)
@@ -289,8 +295,7 @@ if uploaded_file is not None:
                 end_d_3 = sel_date_3[1] if sel_date_3 and len(sel_date_3) == 2 else start_d_3
                 res_choice_3 = st.selectbox("Làm mượt:", ["Nguyên bản", "TB mỗi phút", "TB mỗi 5 phút"], key="res_multi")
                 
-                # Checkbox lọc dữ liệu
-                filter_data_3 = st.checkbox("✅ Chỉ lấy dữ liệu Sạch (Bỏ nhiễu/lỗi)", value=True, help="Tích vào để lọc bỏ các thông số ảo. Bỏ tích để vẽ nguyên bản 100% dữ liệu có trong file.", key="filter_tab3")
+                filter_data_3 = st.checkbox("✅ Chỉ lấy dữ liệu Sạch (Bỏ nhiễu/lỗi)", value=True, help="Tích vào để lọc bỏ các thông số ảo. Bỏ tích để xem số liệu nguyên gốc.", key="filter_tab3")
 
             if st.button("🚀 TẠO BIỂU ĐỒ ĐỐI CHIẾU", type="primary", key="btn_multi"):
                 if len(selected_keys_3) < 2:
@@ -298,7 +303,7 @@ if uploaded_file is not None:
                 else:
                     mask = (df['_parsed_time'].dt.date >= start_d_3) & (df['_parsed_time'].dt.date <= end_d_3)
                     filtered_df = df[mask]
-                    multi_chart_df = extract_sensor_data(filtered_df, selected_keys_3)
+                    multi_chart_df = extract_sensor_data(filtered_df, selected_keys_3) # Dữ liệu tại đây đã được quy đổi chuẩn
                     
                     if not multi_chart_df.empty:
                         clean_dfs = []
@@ -306,7 +311,6 @@ if uploaded_file is not None:
                             sub_df = multi_chart_df[multi_chart_df['Chỉ số'] == col.upper()]
                             ten_chi_so = col.upper()
                             
-                            # LOGIC: Chỉ lọc sạch nếu người dùng tích ô Checkbox
                             if filter_data_3 and ten_chi_so in KHOANG_TOI_UU:
                                 min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
                                 sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
@@ -322,11 +326,9 @@ if uploaded_file is not None:
                             else: plot_data = multi_chart_df.groupby(['TG', 'Chỉ số'])['Giá trị'].mean().reset_index()
                             plot_data = plot_data.sort_values(by='TG')
                             
-                            # 1. Vẽ biểu đồ
                             fig, pts = generate_chart(plot_data, f"Biểu đồ Đối chiếu Trực tiếp", is_multi=True)
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                             
-                            # 2. Hiển thị bảng đối chiếu gộp (Bám sát 100% biểu đồ)
                             trang_thai_loc_3 = "Đã lọc sạch" if filter_data_3 else "Chưa lọc - Gốc 100%"
                             with st.expander(f"📋 Bảng số liệu gộp của biểu đồ trên để đối chứng ({pts} điểm - {trang_thai_loc_3})"):
                                 pivot_df = plot_data.pivot(index='TG', columns='Chỉ số', values='Giá trị').reset_index()
