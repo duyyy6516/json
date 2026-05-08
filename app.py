@@ -75,8 +75,9 @@ def load_and_process_data(file_bytes):
         )
     return df, time_col
 
+# HÀM MỚI: TÁCH VỤ DỰA VÀO SỐ NGÀY DO NGƯỜI DÙNG QUYẾT ĐỊNH
 @st.cache_data
-def detect_seasons_auto(df, sensor_cols):
+def detect_seasons(df, sensor_cols, gap_days):
     if '_parsed_time' not in df.columns or df.empty:
         return df
         
@@ -90,10 +91,9 @@ def detect_seasons_auto(df, sensor_cols):
     time_diffs = valid_times.diff()
     season_mapping = {}
     season_num = 1
-    AUTO_GAP_DAYS = 2 
     
     for idx, diff in time_diffs.items():
-        if pd.notna(diff) and diff.days >= AUTO_GAP_DAYS:
+        if pd.notna(diff) and diff.days >= gap_days:
             season_num += 1
         season_mapping[idx] = f"Vụ {season_num}"
         
@@ -164,8 +164,15 @@ if uploaded_file is not None:
         exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển', '_parsed_time', 'mùa vụ']
         numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
 
-        # Áp dụng tự động tách vụ vào df gốc
-        df = detect_seasons_auto(df, numeric_options)
+        # GIAO DIỆN CẤU HÌNH SỐ NGÀY NGHỈ VỤ CHUNG
+        st.markdown("---")
+        col_gap1, col_gap2 = st.columns([1, 2])
+        with col_gap1:
+            # Cho phép bác tuỳ chỉnh con số này, mặc định là 7 ngày
+            gap_days = st.number_input("Khoảng trống để tính là vụ mới (Ngày):", min_value=1, value=7, help="Nếu cảm biến mất dữ liệu liên tục quá số ngày này, hệ thống sẽ hiểu là đã sang vụ mới.")
+        
+        # Áp dụng hàm tách vụ dựa trên số ngày đã nhập
+        df = detect_seasons(df, numeric_options, gap_days)
 
         # Lấy khoảng thời gian của TOÀN BỘ dữ liệu để áp dụng cho Tab 2, 3
         min_d, max_d = None, None
@@ -183,7 +190,9 @@ if uploaded_file is not None:
         with tab1:
             st.subheader("🌾 Lọc và xem dữ liệu theo Mùa Vụ")
             season_options = ["Tất cả các vụ"] + list(df['Mùa vụ'].unique())
-            selected_season = st.selectbox("📌 Chọn mùa vụ để xuất bảng dữ liệu:", season_options)
+            
+            with col_gap2:
+                selected_season = st.selectbox("📌 Chọn mùa vụ để xuất bảng dữ liệu (Tab 1):", season_options)
 
             # Chỉ lọc df cho riêng Tab 1
             if selected_season != "Tất cả các vụ":
@@ -223,7 +232,6 @@ if uploaded_file is not None:
                 if not selected_keys_2:
                     st.warning("Hãy chọn ít nhất 1 chỉ số!")
                 else:
-                    # Lọc dựa trên toàn bộ df
                     mask = (df['_parsed_time'].dt.date >= start_d_2) & (df['_parsed_time'].dt.date <= end_d_2)
                     filtered_df = df[mask]
                     chart_df = extract_sensor_data(filtered_df, selected_keys_2)
@@ -267,7 +275,6 @@ if uploaded_file is not None:
                 if len(selected_keys_3) < 2:
                     st.warning("Hãy chọn ít nhất 2 chỉ số!")
                 else:
-                    # Lọc dựa trên toàn bộ df
                     mask = (df['_parsed_time'].dt.date >= start_d_3) & (df['_parsed_time'].dt.date <= end_d_3)
                     filtered_df = df[mask]
                     multi_chart_df = extract_sensor_data(filtered_df, selected_keys_3)
