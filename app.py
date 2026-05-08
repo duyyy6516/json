@@ -76,15 +76,17 @@ def load_and_process_data(file_bytes):
         )
     return df, time_col
 
-# HÀM MỚI: TỰ ĐỘNG TÁCH MÙA VỤ DỰA TRÊN KHOẢNG TRỐNG DỮ LIỆU
+# HÀM MỚI: TỰ ĐỘNG TÁCH MÙA VỤ DỰA TRÊN KHOẢNG TRỐNG DỮ LIỆU (ĐÃ SỬA LỖI)
 @st.cache_data
 def detect_seasons(df, time_col, gap_days, sensor_cols):
-    if time_col not in df.columns or df.empty:
+    if '_parsed_time' not in df.columns or df.empty:
         return df
         
     # Tìm những dòng có ÍT NHẤT 1 dữ liệu cảm biến (lọc bỏ các dòng rỗng vô nghĩa giữa 2 vụ)
     valid_rows_mask = df[sensor_cols].notna().any(axis=1)
-    valid_times = df.loc[valid_rows_mask, time_col].sort_values()
+    
+    # Sử dụng cột thời gian đã được chuẩn hóa để tính toán khoảng cách
+    valid_times = df.loc[valid_rows_mask, '_parsed_time'].sort_values()
     
     if valid_times.empty:
         df['Mùa vụ'] = "Vụ 1"
