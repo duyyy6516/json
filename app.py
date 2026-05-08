@@ -158,7 +158,9 @@ def generate_chart(df, title, is_multi=False):
     show_markers = num_points <= 1000 
     
     if is_multi:
-        fig = px.line(df, x='TG', y='Giá trị', color='Chỉ số', markers=show_markers, render_mode=use_webgl)
+        # Ép sử dụng bảng màu Set1 (Tương phản mạnh: Đỏ, Xanh lam, Xanh lá, Tím, Cam, Vàng, Nâu...)
+        fig = px.line(df, x='TG', y='Giá trị', color='Chỉ số', markers=show_markers, render_mode=use_webgl,
+                      color_discrete_sequence=px.colors.qualitative.Set1)
     else:
         fig = px.line(df, x='TG', y='Giá trị', markers=show_markers, render_mode=use_webgl)
         
@@ -250,7 +252,7 @@ if uploaded_file is not None:
                 else:
                     mask = (df['_parsed_time'].dt.date >= start_d_2) & (df['_parsed_time'].dt.date <= end_d_2)
                     filtered_df = df[mask]
-                    chart_df = extract_sensor_data(filtered_df, selected_keys_2) # Dữ liệu tại đây đã được quy đổi chuẩn
+                    chart_df = extract_sensor_data(filtered_df, selected_keys_2) 
                     
                     if not chart_df.empty:
                         rule = r_dict[res_choice_2]
@@ -303,7 +305,7 @@ if uploaded_file is not None:
                 else:
                     mask = (df['_parsed_time'].dt.date >= start_d_3) & (df['_parsed_time'].dt.date <= end_d_3)
                     filtered_df = df[mask]
-                    multi_chart_df = extract_sensor_data(filtered_df, selected_keys_3) # Dữ liệu tại đây đã được quy đổi chuẩn
+                    multi_chart_df = extract_sensor_data(filtered_df, selected_keys_3) 
                     
                     if not multi_chart_df.empty:
                         clean_dfs = []
