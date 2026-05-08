@@ -12,25 +12,24 @@ import io
 st.set_page_config(page_title="JSON Data Pro", layout="wide", page_icon="🌱")
 st.title("🌱 Công cụ Phân tích Dữ liệu Nông Nghiệp")
 
-# Cấu hình khoảng an toàn/tốt nhất cho cây (Dựa trên các key thực tế trong file)
-# Các chỉ số không có trong danh sách này (như Bơm, Van, Lưu lượng) sẽ vẽ bình thường
+# Cấu hình khoảng dữ liệu "Đẹp" (loại bỏ nhiễu, lỗi cảm biến, ngoài khoảng)
 KHOANG_TOI_UU = {
     # Môi trường Không khí
-    'TEMPKK': (22.0, 28.0),         # Nhiệt độ không khí (°C)
-    'HUMIKK': (60.0, 80.0),         # Độ ẩm không khí (%)
-    'SOIL_ASKK': (10000, 40000),    # Cường độ ánh sáng môi trường
-    'AS': (10000, 40000),           # Cường độ ánh sáng lúc tưới
+    'TEMPKK': (10.0, 45.0),         # Nhiệt độ không khí hợp lý (10 - 45 °C)
+    'HUMIKK': (20.0, 100.0),        # Độ ẩm không khí (20% - 100%)
+    'SOIL_ASKK': (0, 100000),       # Cường độ ánh sáng môi trường
+    'AS': (0, 100000),              # Cường độ ánh sáng lúc tưới
 
-    # Môi trường Đất (Dữ liệu đang nhân 10 hoặc 100)
-    'NHIỆT ĐỘ': (200.0, 260.0),     # Tương đương 20°C - 26°C
-    'ĐỘ ẨM': (50.0, 70.0),          # Tương đương 50% - 70%
+    # Môi trường Đất (Dữ liệu đang nhân 10 hoặc 100 từ cảm biến)
+    'NHIỆT ĐỘ': (100.0, 500.0),     # Tương đương 10°C - 50°C
+    'ĐỘ ẨM': (0.0, 100.0),          # Tương đương 0% - 100%
     
     # Dinh dưỡng Nước & Đất
-    'PH': (550.0, 650.0),           # Tương đương pH 5.5 - 6.5
-    'EC': (1200.0, 2500.0),         # Tương đương 1.2 - 2.5 mS/cm
-    'N': (100.0, 200.0),            # Nitơ
-    'P': (20.0, 60.0),              # Phốt pho
-    'K': (100.0, 250.0)             # Kali
+    'PH': (400.0, 800.0),           # Tương đương pH 4.0 - 8.0
+    'EC': (500.0, 4000.0),          # Tương đương 0.5 - 4.0 mS/cm
+    'N': (0.0, 500.0),              # Nitơ
+    'P': (0.0, 500.0),              # Phốt pho
+    'K': (0.0, 500.0)               # Kali
 }
 
 # ==============================================================================
@@ -166,7 +165,7 @@ if uploaded_file is not None:
         exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển', '_parsed_time']
         numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
 
-        tab1, tab2, tab3 = st.tabs(["🗂️ Bảng dữ liệu gốc", "📈 Biểu đồ Đơn (Có vùng tối ưu)", "📊 Biểu đồ Lồng nhau"])
+        tab1, tab2, tab3 = st.tabs(["🗂️ Bảng dữ liệu gốc", "📈 Biểu đồ Đơn (Lọc sạch)", "📊 Biểu đồ Lồng nhau"])
 
         # --- TAB 1: DỮ LIỆU GỐC ---
         with tab1:
@@ -217,34 +216,31 @@ if uploaded_file is not None:
                             sub_df = chart_df[chart_df['Chỉ số'] == col.upper()]
                             if sub_df.empty: continue
                             
+                            ten_chi_so = col.upper()
+                            
+                            # ========================================================
+                            # LỌC DỮ LIỆU SẠCH CHO TAB 2
+                            # ========================================================
+                            if ten_chi_so in KHOANG_TOI_UU:
+                                min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
+                                sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
+                                
+                                if sub_df.empty:
+                                    st.warning(f"⚠️ {ten_chi_so}: Toàn bộ dữ liệu nằm ngoài khoảng chuẩn, đã bị loại bỏ!")
+                                    continue
+                            # ========================================================
+                            
                             if rule:
                                 plot_data = sub_df.set_index('TG').resample(rule)['Giá trị'].mean().dropna().reset_index()
                             else:
                                 plot_data = sub_df.groupby('TG')['Giá trị'].mean().reset_index()
                                 
                             plot_data = plot_data.sort_values(by='TG')
-                            fig, pts = generate_chart(plot_data, f"Chỉ số: {col.upper()}", is_multi=False)
-                            
-                            # ===================================================
-                            # LOGIC VẼ VÙNG AN TOÀN CHO CÁC CHỈ SỐ NÔNG NGHIỆP
-                            # ===================================================
-                            ten_chi_so = col.upper()
-                            if ten_chi_so in KHOANG_TOI_UU:
-                                min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
-                                fig.add_hrect(
-                                    y0=min_val, y1=max_val, 
-                                    line_width=0, 
-                                    fillcolor="green", opacity=0.15,
-                                    annotation_text=f"Khoảng tốt cho cây ({min_val} - {max_val})", 
-                                    annotation_position="top left",
-                                    annotation_font_size=12,
-                                    annotation_font_color="green"
-                                )
-                            # ===================================================
+                            fig, pts = generate_chart(plot_data, f"Chỉ số: {ten_chi_so}", is_multi=False)
 
                             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                             
-                            with st.expander(f"Xem chi tiết {pts} điểm dữ liệu"):
+                            with st.expander(f"Xem chi tiết {pts} điểm dữ liệu ĐÃ LỌC SẠCH"):
                                 st.dataframe(plot_data, use_container_width=True)
                             st.write("---")
                     else:
@@ -276,22 +272,44 @@ if uploaded_file is not None:
                     multi_chart_df = extract_sensor_data(filtered_df, selected_keys_3)
                     
                     if not multi_chart_df.empty:
-                        rule = r_dict[res_choice_3]
-                        if start_d_3 and end_d_3 and (end_d_3 - start_d_3).days > 7 and not rule:
-                            rule = "5min"
+                        # ========================================================
+                        # LỌC DỮ LIỆU SẠCH CHO TỪNG CHỈ SỐ TRONG TAB 3
+                        # ========================================================
+                        clean_dfs = []
+                        for col in selected_keys_3:
+                            sub_df = multi_chart_df[multi_chart_df['Chỉ số'] == col.upper()]
+                            ten_chi_so = col.upper()
                             
-                        if rule:
-                            plot_data = multi_chart_df.set_index('TG').groupby('Chỉ số')['Giá trị'].resample(rule).mean().dropna().reset_index()
-                        else:
-                            plot_data = multi_chart_df.groupby(['TG', 'Chỉ số'])['Giá trị'].mean().reset_index()
+                            if ten_chi_so in KHOANG_TOI_UU:
+                                min_val, max_val = KHOANG_TOI_UU[ten_chi_so]
+                                sub_df = sub_df[(sub_df['Giá trị'] >= min_val) & (sub_df['Giá trị'] <= max_val)]
                             
-                        plot_data = plot_data.sort_values(by='TG')
-                        fig, pts = generate_chart(plot_data, "Biểu đồ Đối chiếu Trực tiếp", is_multi=True)
-                        st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
+                            if not sub_df.empty:
+                                clean_dfs.append(sub_df)
                         
-                        with st.expander(f"Xem bảng dữ liệu gộp ({pts} điểm)"):
-                            pivot_df = plot_data.pivot(index='TG', columns='Chỉ số', values='Giá trị').reset_index()
-                            st.dataframe(pivot_df, use_container_width=True)
+                        # Gộp lại sau khi đã lọc
+                        multi_chart_df = pd.concat(clean_dfs) if clean_dfs else pd.DataFrame()
+                        # ========================================================
+                        
+                        if not multi_chart_df.empty:
+                            rule = r_dict[res_choice_3]
+                            if start_d_3 and end_d_3 and (end_d_3 - start_d_3).days > 7 and not rule:
+                                rule = "5min"
+                                
+                            if rule:
+                                plot_data = multi_chart_df.set_index('TG').groupby('Chỉ số')['Giá trị'].resample(rule).mean().dropna().reset_index()
+                            else:
+                                plot_data = multi_chart_df.groupby(['TG', 'Chỉ số'])['Giá trị'].mean().reset_index()
+                                
+                            plot_data = plot_data.sort_values(by='TG')
+                            fig, pts = generate_chart(plot_data, "Biểu đồ Đối chiếu Trực tiếp (Đã loại bỏ nhiễu)", is_multi=True)
+                            st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
+                            
+                            with st.expander(f"Xem bảng dữ liệu gộp SẠCH ({pts} điểm)"):
+                                pivot_df = plot_data.pivot(index='TG', columns='Chỉ số', values='Giá trị').reset_index()
+                                st.dataframe(pivot_df, use_container_width=True)
+                        else:
+                            st.warning("Toàn bộ dữ liệu của các chỉ số này đều nằm ngoài khoảng chuẩn hoặc bị lỗi.")
                     else:
                         st.info("Không có dữ liệu hợp lệ trong khoảng thời gian đã chọn.")
 
