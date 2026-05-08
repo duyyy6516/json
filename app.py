@@ -4,12 +4,15 @@ import numpy as np
 import json
 import re
 import plotly.express as px
+import io
 
-# Cấu hình trang
-st.set_page_config(page_title="JSON Data Pro", layout="wide")
-st.title("📊 Công cụ Phân tích Dữ liệu ")
+# --- CẤU HÌNH TRANG ---
+st.set_page_config(page_title="JSON Data Pro", layout="wide", page_icon="📊")
+st.title("📊 Công cụ Phân tích Dữ liệu Pro")
 
-# --- 1. TỐI ƯU HÓA HIỆU NĂNG VỚI CACHE ---
+# ==============================================================================
+# 1. CÁC HÀM XỬ LÝ LÕI (CÓ CACHE)
+# ==============================================================================
 @st.cache_data
 def normalize_keys(data):
     if isinstance(data, list):
@@ -23,280 +26,231 @@ def flatten_json(y):
     out = {}
     def flatten(x, name=''):
         if isinstance(x, dict):
-            for a in x: 
+            for a in x:
                 flatten(x[a], name + a + '.')
         elif isinstance(x, list):
-            i = 0
-            for a in x:
+            for i, a in enumerate(x):
                 flatten(a, name + str(i) + '.')
-                i += 1
-        else: 
+        else:
             out[name[:-1]] = x
     flatten(y)
     return out
 
 @st.cache_data
 def load_and_process_data(file_bytes):
-    raw_data = json.loads(file_bytes)
+    try:
+        raw_data = json.loads(file_bytes)
+    except json.JSONDecodeError:
+        raise ValueError("File tải lên không đúng định dạng JSON hợp lệ.")
+        
     if isinstance(raw_data, dict): 
         raw_data = [raw_data]
+    
     clean_json = normalize_keys(raw_data)
     df = pd.DataFrame([flatten_json(row) for row in clean_json])
     df = df.dropna(axis=1, how='all').loc[:, ~df.columns.duplicated()]
     df = df.replace(r'^\s*$', np.nan, regex=True)
-    return df
+    
+    # Tìm cột thời gian
+    time_col = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
+    if time_col:
+        df['_parsed_time'] = pd.to_datetime(
+            df[time_col].astype(str).str.replace('-', ':').str.replace(':', '-', 2), 
+            errors='coerce'
+        )
+    return df, time_col
 
-# --- XỬ LÝ FILE UPLOAD ---
+# ==============================================================================
+# 2. CÁC HÀM TIỆN ÍCH CHO BIỂU ĐỒ
+# ==============================================================================
+def extract_sensor_data(df, selected_cols):
+    """Trích xuất dữ liệu kèm theo STT để hiển thị khi hover"""
+    records = []
+    # Kiểm tra xem có cột stt không
+    stt_col = next((c for c in df.columns if c.lower() == 'stt'), None)
+    
+    cols_to_extract = (([stt_col] if stt_col else []) + ['_parsed_time'] + selected_cols)
+    working_df = df[cols_to_extract].dropna(subset=['_parsed_time'])
+    
+    # Biên dịch regex để tăng tốc
+    pattern = re.compile(r'(\d{2}-\d{2}-\d{2})/([-+]?\d*\.?\d+)')
+    num_pattern = re.compile(r'[-+]?\d*\.?\d+')
+
+    for row in working_df.itertuples(index=False):
+        idx_offset = 1 if stt_col else 0
+        current_stt = row[0] if stt_col else "N/A"
+        main_time = row[idx_offset]
+        
+        for i, col_name in enumerate(selected_cols, start=idx_offset + 1):
+            val = str(row[i]).strip()
+            if not val or val.lower() == 'nan':
+                continue
+                
+            matches = pattern.findall(val)
+            if matches:
+                for t_str, v_str in matches:
+                    try:
+                        full_t_str = f"{main_time.strftime('%Y-%m-%d')} {t_str.replace('-', ':')}"
+                        records.append({
+                            'TG': pd.to_datetime(full_t_str), 
+                            'Giá trị': float(v_str), 
+                            'Chỉ số': col_name.upper(),
+                            'STT': current_stt
+                        })
+                    except: pass
+            else:
+                num_match = num_pattern.search(val)
+                if num_match:
+                    records.append({
+                        'TG': main_time, 
+                        'Giá trị': float(num_match.group()), 
+                        'Chỉ số': col_name.upper(),
+                        'STT': current_stt
+                    })
+    return pd.DataFrame(records)
+
+def generate_chart(df, title, is_multi=False):
+    """Hàm vẽ biểu đồ với cấu hình hiển thị STT khi hover"""
+    num_points = len(df)
+    use_webgl = 'webgl' if num_points > 1000 else 'svg'
+    show_markers = num_points <= 1000 
+    
+    fig = px.line(
+        df, x='TG', y='Giá trị', 
+        color='Chỉ số' if is_multi else None, 
+        markers=show_markers, 
+        render_mode=use_webgl,
+        custom_data=['STT'] if 'STT' in df.columns else None
+    )
+        
+    # Cấu hình Hover Template: Hiện STT lên đầu, định dạng lại thời gian
+    hovertemplate = (
+        "<b>STT: %{customdata[0]}</b><br>" +
+        "Thời gian: %{x|%d/%m/%Y %H:%M:%S}<br>" +
+        "Giá trị: <b>%{y}</b>" +
+        "<extra></extra>"
+    )
+    
+    fig.update_traces(hovertemplate=hovertemplate)
+    
+    fig.update_layout(
+        title=f"<b>{title}</b>",
+        xaxis_title="Trục thời gian",
+        yaxis_title="Giá trị cảm biến",
+        hovermode="x", # Đổi thành 'x' để tập trung vào điểm dữ liệu theo STT
+        dragmode='pan',
+        template="plotly_white",
+        xaxis=dict(showspikes=True, spikecolor="gray", spikemode="across")
+    )
+    
+    return fig, num_points
+
+def to_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Data')
+    return output.getvalue()
+
+# ==============================================================================
+# 3. GIAO DIỆN CHÍNH
+# ==============================================================================
 uploaded_file = st.file_uploader("Tải lên file JSON", type=['json'])
 
 if uploaded_file is not None:
     try:
-        # Xử lý dữ liệu ban đầu
-        file_bytes = uploaded_file.getvalue().decode("utf-8")
-        df = load_and_process_data(file_bytes)
-        display_df = df.fillna("")
+        with st.spinner("Đang phân tích cấu trúc JSON..."):
+            file_bytes = uploaded_file.getvalue().decode("utf-8")
+            df, time_col = load_and_process_data(file_bytes)
+            display_df = df.drop(columns=['_parsed_time'], errors='ignore').fillna("")
 
-        # --- TẠO 3 TABS ĐỘC LẬP ---
-        tab1, tab2, tab3 = st.tabs(["🗂️ Bảng dữ liệu gốc", "📈 Biểu đồ Đơn", "📊 Biểu đồ Lồng nhau (So sánh)"])
+        # Lấy dải ngày
+        min_d, max_d = None, None
+        if '_parsed_time' in df.columns:
+            valid_ts = df['_parsed_time'].dropna()
+            if not valid_ts.empty:
+                min_d, max_d = valid_ts.min().date(), valid_ts.max().date()
 
-        # -------------------------------------------------------------
-        # TAB 1: HIỂN THỊ DỮ LIỆU
-        # -------------------------------------------------------------
+        # Lọc các cột số
+        exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển', '_parsed_time']
+        numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
+
+        tab1, tab2, tab3 = st.tabs(["🗂️ Bảng dữ liệu", "📈 Biểu đồ Đơn", "📊 So sánh Đối chiếu"])
+
         with tab1:
-            st.subheader(f"🗂️ Bảng dữ liệu gốc ({len(df)} bản ghi)")
-            st.data_editor(display_df, use_container_width=True, key="editor_tab1")
+            c1, c2, c3 = st.columns([2, 1, 1])
+            c1.subheader(f"Dữ liệu gốc: {len(df)} dòng")
+            
+            csv = display_df.to_csv(index=False).encode('utf-8')
+            c2.download_button("📥 Tải CSV", csv, "data.csv", "text/csv", use_container_width=True)
+            
+            xlsx = to_excel(display_df)
+            c3.download_button("📥 Tải Excel", xlsx, "data.xlsx", use_container_width=True)
+            
+            st.dataframe(display_df, use_container_width=True)
 
-        # -------------------------------------------------------------
-        # TAB 2: VẼ BIỂU ĐỒ ĐƠN LẺ
-        # -------------------------------------------------------------
+        # HÀM DÙNG CHUNG CHO TAB 2 & 3
+        r_dict = {"Nguyên bản": None, "Trung bình 1 phút": "1min", "Trung bình 5 phút": "5min"}
+
         with tab2:
-            st.subheader("⚙️ Thiết lập biểu đồ đơn lẻ")
-            
-            time_col = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
-            start_d, end_d = None, None
-            
-            col1, col2 = st.columns([1, 2])
-            
-            with col1:
-                if time_col:
-                    t_dates = pd.to_datetime(df[time_col].astype(str).str.replace('-', ':').str.replace(':', '-', 2), errors='coerce')
-                    valid_ts = t_dates.dropna()
-                    if not valid_ts.empty:
-                        min_d, max_d = valid_ts.min().date(), valid_ts.max().date()
-                        sel_date = st.date_input("Lọc theo ngày:", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="date_tab2")
-                        start_d, end_d = (sel_date[0], sel_date[1]) if len(sel_date) == 2 else (sel_date[0], sel_date[0])
-                
-                resample_choice = st.selectbox(
-                    "Làm mượt dữ liệu:", 
-                    ["Nguyên bản", "Trung bình mỗi phút", "Trung bình mỗi 5 phút"], 
-                    key="res_tab2"
-                )
-                resample_dict = {"Nguyên bản": None, "Trung bình mỗi phút": "1min", "Trung bình mỗi 5 phút": "5min"}
+            st.subheader("Thiết lập biểu đồ đơn")
+            col_a, col_b = st.columns([1, 2])
+            with col_a:
+                sel_date_2 = st.date_input("Chọn ngày:", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="d2")
+                res_2 = st.selectbox("Làm mượt:", list(r_dict.keys()), key="r2")
+            with col_b:
+                selected_keys_2 = [k for i, k in enumerate(numeric_options) if st.checkbox(k.upper(), key=f"t2_{k}")]
 
-            with col2:
-                exclude = [time_col, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển']
-                numeric_options = [c for c in df.columns if c not in exclude and '_id' not in c]
-                
-                st.write("Chọn chỉ số vẽ biểu đồ:")
-                cols_ui = st.columns(4)
-                selected_keys = [k for i, k in enumerate(numeric_options) if cols_ui[i % 4].checkbox(k.upper(), key=f"c_tab2_{k}")]
-
-            if st.button("🚀 TẠO BIỂU ĐỒ ĐƠN", type="primary", key="btn_tab2"):
-                if not selected_keys:
-                    st.warning("Hãy chọn ít nhất 1 chỉ số!")
+            if st.button("🚀 XUẤT BIỂU ĐỒ ĐƠN", type="primary"):
+                if not selected_keys_2:
+                    st.warning("Vui lòng chọn chỉ số.")
                 else:
-                    working_df = df.copy()
-                    if time_col and start_d and end_d:
-                        working_df[time_col] = pd.to_datetime(working_df[time_col].astype(str).str.replace('-', ':').str.replace(':', '-', 2), errors='coerce')
-                        working_df = working_df.dropna(subset=[time_col])
-                        mask = (working_df[time_col].dt.date >= start_d) & (working_df[time_col].dt.date <= end_d)
-                        working_df = working_df[mask]
-
-                    for col in selected_keys:
-                        all_points = []
-                        for idx, row in working_df.iterrows():
-                            main_time = row[time_col]
-                            val = str(row[col]).strip()
-                            
-                            if val and val.lower() != 'nan':
-                                matches = re.findall(r'(\d{2}-\d{2}-\d{2})/([-+]?\d*\.?\d+)', val)
-                                if matches:
-                                    for t_str, v_str in matches:
-                                        try:
-                                            full_t_str = f"{main_time.strftime('%Y-%m-%d')} {t_str.replace('-', ':')}"
-                                            all_points.append({'TG': pd.to_datetime(full_t_str), 'Giá trị': float(v_str)})
-                                        except Exception:
-                                            pass
-                                else:
-                                    num_match = re.search(r'[-+]?\d*\.?\d+', val)
-                                    if num_match:
-                                        all_points.append({'TG': main_time, 'Giá trị': float(num_match.group())})
-                        
-                        if all_points:
-                            chart_df = pd.DataFrame(all_points)
-                            rule = resample_dict[resample_choice]
-                            
-                            # --- TÍNH NĂNG: TỰ ĐỘNG ÉP LÀM MƯỢT NẾU > 7 NGÀY ---
-                            if start_d and end_d:
-                                delta_days = (end_d - start_d).days
-                                if delta_days > 7 and not rule:
-                                    st.warning(f"⚠️ Khoảng thời gian chọn quá dài ({delta_days} ngày). Hệ thống tự động chuyển '{col.upper()}' sang 'Trung bình mỗi 5 phút' để tránh treo trình duyệt.")
-                                    rule = "5min"
-
+                    start, end = (sel_date_2[0], sel_date_2[1]) if len(sel_date_2)==2 else (sel_date_2[0], sel_date_2[0])
+                    mask = (df['_parsed_time'].dt.date >= start) & (df['_parsed_time'].dt.date <= end)
+                    chart_df = extract_sensor_data(df[mask], selected_keys_2)
+                    
+                    if not chart_df.empty:
+                        rule = r_dict[res_2]
+                        for col in selected_keys_2:
+                            sub = chart_df[chart_df['Chỉ số'] == col.upper()]
                             if rule:
-                                plot_data = chart_df.set_index('TG').resample(rule)['Giá trị'].mean().dropna().reset_index()
+                                # Khi resample, lấy STT đầu tiên trong khoảng thời gian đó
+                                plot_data = sub.set_index('TG').resample(rule).agg({'Giá trị': 'mean', 'STT': 'first'}).dropna().reset_index()
                             else:
-                                plot_data = chart_df.groupby('TG')['Giá trị'].mean().reset_index()
-
-                            if not plot_data.empty:
-                                plot_data = plot_data.sort_values(by='TG')
-                                st.write(f"### Biểu đồ: {col.upper()}")
-                                
-                                num_points = len(plot_data)
-                                use_webgl = 'webgl' if num_points > 1000 else 'svg'
-                                show_markers = num_points <= 1000 
-
-                                fig = px.line(plot_data, x='TG', y='Giá trị', markers=show_markers, render_mode=use_webgl)
-                                fig.update_layout(
-                                    xaxis_title="Thời gian (TG)",
-                                    yaxis_title=f"Giá trị ({col.upper()})",
-                                    hovermode="x unified",
-                                    dragmode='pan',
-                                    xaxis=dict(rangeslider=dict(visible=False), type="date")
-                                )
-                                
-                                # --- TÍNH NĂNG: ĐƯỜNG GIÓNG (SPIKELINES) ---
-                                fig.update_xaxes(showspikes=True, spikecolor="gray", spikesnap="cursor", spikemode="across")
-                                fig.update_yaxes(showspikes=True, spikecolor="gray", spikemode="across")
-                                
-                                st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
-                                
-                                with st.expander(f"Xem chi tiết {num_points} điểm dữ liệu cho {col.upper()}"):
-                                    st.dataframe(plot_data, use_container_width=True)
-                                st.write("---")
-
-        # -------------------------------------------------------------
-        # TAB 3: VẼ BIỂU ĐỒ LỒNG NHAU (SO SÁNH MULTI-LINE)
-        # -------------------------------------------------------------
-        with tab3:
-            st.subheader("⚙️ Thiết lập biểu đồ đối chiếu lồng nhau (Giá trị thực tế)")
-            st.info("Chức năng này so sánh các thông số dựa trên giá trị thực của chúng.")
-
-            time_col_multi = next((col for col in df.columns if 'time' in col.lower() or 'thời gian' in col.lower()), None)
-            exclude_m = [time_col_multi, 'stt', 'tên khu', 'trạng thái', 'phương thức hoạt động', 'người điều khiển']
-            numeric_opts_multi = [c for c in df.columns if c not in exclude_m and '_id' not in c]
-
-            col1_m, col2_m = st.columns([1, 2])
-            
-            with col1_m:
-                st.write("🎯 **1. Chọn các chỉ số:**")
-                check_multi_ui = st.columns(3)
-                selected_comparison_keys = [k for i, k in enumerate(numeric_opts_multi) if check_multi_ui[i % 3].checkbox(k.upper(), key=f"c_multi_{k}")]
-
-            with col2_m:
-                st.write("✨ **2. Tùy chỉnh:**")
-                start_d_m, end_d_m = None, None
-                if time_col_multi:
-                    t_dates_m = pd.to_datetime(df[time_col_multi].astype(str).str.replace('-', ':').str.replace(':', '-', 2), errors='coerce')
-                    valid_ts_m = t_dates_m.dropna()
-                    if not valid_ts_m.empty:
-                        min_d_m, max_d_m = valid_ts_m.min().date(), valid_ts_m.max().date()
-                        sel_date_m = st.date_input("Lọc theo ngày:", value=(min_d_m, max_d_m), min_value=min_d_m, max_value=max_d_m, key="date_multi")
-                        start_d_m, end_d_m = (sel_date_m[0], sel_date_m[1]) if len(sel_date_m) == 2 else (sel_date_m[0], sel_date_m[0])
-
-                res_choice_multi = st.selectbox(
-                    "Làm mượt dữ liệu:", 
-                    ["Nguyên bản", "Trung bình mỗi phút", "Trung bình mỗi 5 phút"], 
-                    key="res_multi"
-                )
-                r_dict_multi = {"Nguyên bản": None, "Trung bình mỗi phút": "1min", "Trung bình mỗi 5 phút": "5min"}
-
-            if st.button("🚀 TẠO BIỂU ĐỒ ĐỐI CHIẾU", type="primary", key="btn_multi"):
-                if len(selected_comparison_keys) < 2:
-                    st.warning("Hãy chọn ít nhất 2 chỉ số!")
-                else:
-                    all_multi_points = []
-                    working_df_multi = df.copy()
-                    
-                    if time_col_multi and start_d_m and end_d_m:
-                        working_df_multi[time_col_multi] = pd.to_datetime(working_df_multi[time_col_multi].astype(str).str.replace('-', ':').str.replace(':', '-', 2), errors='coerce')
-                        working_df_multi = working_df_multi.dropna(subset=[time_col_multi])
-                        mask_m = (working_df_multi[time_col_multi].dt.date >= start_d_m) & (working_df_multi[time_col_multi].dt.date <= end_d_m)
-                        working_df_multi = working_df_multi[mask_m]
-
-                    for col in selected_comparison_keys:
-                        for idx, row in working_df_multi.iterrows():
-                            main_time = row[time_col_multi]
-                            val = str(row[col]).strip()
+                                plot_data = sub.sort_values('TG')
                             
-                            if val and val.lower() != 'nan':
-                                matches = re.findall(r'(\d{2}-\d{2}-\d{2})/([-+]?\d*\.?\d+)', val)
-                                if matches:
-                                    for t_str, v_str in matches:
-                                        try:
-                                            full_t_str = f"{main_time.strftime('%Y-%m-%d')} {t_str.replace('-', ':')}"
-                                            all_multi_points.append({'TG': pd.to_datetime(full_t_str), 'Giá trị': float(v_str), 'Loại chỉ số': col.upper()})
-                                        except Exception: 
-                                            pass
-                                else:
-                                    num_match = re.search(r'[-+]?\d*\.?\d+', val)
-                                    if num_match:
-                                        all_multi_points.append({'TG': main_time, 'Giá trị': float(num_match.group()), 'Loại chỉ số': col.upper()})
-                    
-                    if all_multi_points:
-                        multi_chart_df = pd.DataFrame(all_multi_points)
-                        rule_multi = r_dict_multi[res_choice_multi]
-                        
-                        # --- TÍNH NĂNG: TỰ ĐỘNG ÉP LÀM MƯỢT NẾU > 7 NGÀY ---
-                        if start_d_m and end_d_m:
-                            delta_days_m = (end_d_m - start_d_m).days
-                            if delta_days_m > 7 and not rule_multi:
-                                st.warning(f"⚠️ Khoảng thời gian so sánh quá dài ({delta_days_m} ngày). Hệ thống tự động chuyển sang 'Trung bình mỗi 5 phút' để biểu đồ hoạt động mượt mà.")
-                                rule_multi = "5min"
-
-                        if rule_multi:
-                            plot_data_multi = multi_chart_df.set_index('TG').groupby('Loại chỉ số')['Giá trị'].resample(rule_multi).mean().dropna().reset_index()
-                        else:
-                            plot_data_multi = multi_chart_df.groupby(['TG', 'Loại chỉ số'])['Giá trị'].mean().reset_index()
-
-                        if not plot_data_multi.empty:
-                            plot_data_multi = plot_data_multi.sort_values(by='TG')
-                            
-                            st.write(f"### Biểu đồ đối chiếu giá trị thực")
-                            
-                            num_multi_points = len(plot_data_multi)
-                            use_webgl_multi = 'webgl' if num_multi_points > 2000 else 'svg'
-                            show_markers_multi = num_multi_points <= 1000
-
-                            fig_multi = px.line(
-                                plot_data_multi, 
-                                x='TG', 
-                                y='Giá trị', 
-                                color='Loại chỉ số', 
-                                markers=show_markers_multi,
-                                render_mode=use_webgl_multi
-                            )
-                            
-                            fig_multi.update_layout(
-                                xaxis_title="Thời gian (TG)", 
-                                yaxis_title="Giá trị (Đơn vị đo thực tế)",
-                                hovermode="x unified", 
-                                dragmode='pan',
-                                xaxis=dict(rangeslider=dict(visible=False), type="date")
-                            )
-                            
-                            # --- TÍNH NĂNG: ĐƯỜNG GIÓNG (SPIKELINES) ---
-                            fig_multi.update_xaxes(showspikes=True, spikecolor="gray", spikesnap="cursor", spikemode="across")
-                            fig_multi.update_yaxes(showspikes=True, spikecolor="gray", spikemode="across")
-                            
-                            st.plotly_chart(fig_multi, use_container_width=True, config={'scrollZoom': True})
-
-                            with st.expander(f"Xem bảng dữ liệu ({num_multi_points} điểm)"):
-                                st.dataframe(plot_data_multi, use_container_width=True)
-                        else:
-                            st.error("Không có dữ liệu hiển thị.")
+                            fig, _ = generate_chart(plot_data, f"Chỉ số: {col.upper()}", False)
+                            st.plotly_chart(fig, use_container_width=True)
                     else:
-                        st.warning("Không tìm thấy dữ liệu hợp lệ.")
+                        st.error("Không có dữ liệu trong khoảng này.")
+
+        with tab3:
+            st.subheader("Biểu đồ đối chiếu (Nhiều chỉ số)")
+            col_m1, col_m2 = st.columns([1, 2])
+            with col_m1:
+                selected_keys_3 = [k for i, k in enumerate(numeric_options) if st.checkbox(k.upper(), key=f"t3_{k}")]
+            with col_m2:
+                sel_date_3 = st.date_input("Chọn ngày:", value=(min_d, max_d), key="d3")
+                res_3 = st.selectbox("Làm mượt:", list(r_dict.keys()), key="r3")
+
+            if st.button("🚀 XUẤT BIỂU ĐỒ ĐỐI CHIẾU", type="primary"):
+                if len(selected_keys_3) < 2:
+                    st.warning("Chọn ít nhất 2 chỉ số để so sánh.")
+                else:
+                    start, end = (sel_date_3[0], sel_date_3[1]) if len(sel_date_3)==2 else (sel_date_3[0], sel_date_3[0])
+                    mask = (df['_parsed_time'].dt.date >= start) & (df['_parsed_time'].dt.date <= end)
+                    multi_df = extract_sensor_data(df[mask], selected_keys_3)
+                    
+                    if not multi_df.empty:
+                        rule = r_dict[res_3]
+                        if rule:
+                            plot_data = multi_df.set_index('TG').groupby('Chỉ số').resample(rule).agg({'Giá trị': 'mean', 'STT': 'first'}).dropna().reset_index()
+                        else:
+                            plot_data = multi_df.sort_values('TG')
+                        
+                        fig, _ = generate_chart(plot_data, "So sánh các chỉ số cảm biến", True)
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.error("Không có dữ liệu.")
 
     except Exception as e:
         st.error(f"Lỗi: {e}")
